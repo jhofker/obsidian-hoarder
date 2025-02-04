@@ -1,9 +1,6 @@
-import { Plugin, Notice, Events, TFile } from "obsidian";
-import {
-  HoarderSettings,
-  DEFAULT_SETTINGS,
-  HoarderSettingTab,
-} from "./settings";
+import { Events, Notice, Plugin, TFile } from "obsidian";
+
+import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings";
 
 interface HoarderTag {
   id: string;
@@ -34,6 +31,7 @@ interface HoarderBookmarkContent {
 interface HoarderBookmark {
   id: string;
   createdAt: string;
+  modifiedAt?: string;
   title: string | null;
   archived: boolean;
   favourited: boolean;
@@ -95,7 +93,7 @@ export default class HoarderPlugin extends Plugin {
             await this.handleFileModification(file);
           }, 2000); // Wait 2 seconds after last modification
         }
-      }),
+      })
     );
 
     // Start periodic sync
@@ -139,10 +137,7 @@ export default class HoarderPlugin extends Plugin {
     }, interval);
   }
 
-  async fetchBookmarks(
-    cursor?: string,
-    limit: number = 100,
-  ): Promise<HoarderResponse> {
+  async fetchBookmarks(cursor?: string, limit: number = 100): Promise<HoarderResponse> {
     const queryParams = new URLSearchParams({
       limit: limit.toString(),
     });
@@ -166,7 +161,7 @@ export default class HoarderPlugin extends Plugin {
           Authorization: `Bearer ${this.settings.apiKey}`,
           "Content-Type": "application/json",
         },
-      },
+      }
     );
 
     if (!response.ok) {
@@ -231,13 +226,11 @@ export default class HoarderPlugin extends Plugin {
     }
 
     // Fallback to ID with timestamp
-    return `Bookmark-${bookmark.id}-${
-      new Date(bookmark.createdAt).toISOString().split("T")[0]
-    }`;
+    return `Bookmark-${bookmark.id}-${new Date(bookmark.createdAt).toISOString().split("T")[0]}`;
   }
 
   async extractNotesFromFile(
-    filePath: string,
+    filePath: string
   ): Promise<{ currentNotes: string | null; originalNotes: string | null }> {
     try {
       const file = this.app.vault.getAbstractFileByPath(filePath);
@@ -262,24 +255,18 @@ export default class HoarderPlugin extends Plugin {
     }
   }
 
-  async updateBookmarkInHoarder(
-    bookmarkId: string,
-    note: string,
-  ): Promise<boolean> {
+  async updateBookmarkInHoarder(bookmarkId: string, note: string): Promise<boolean> {
     try {
-      const response = await fetch(
-        `${this.settings.apiEndpoint}/bookmarks/${bookmarkId}`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${this.settings.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            note: note,
-          }),
+      const response = await fetch(`${this.settings.apiEndpoint}/bookmarks/${bookmarkId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${this.settings.apiKey}`,
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          note: note,
+        }),
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -330,11 +317,9 @@ export default class HoarderPlugin extends Plugin {
         for (const bookmark of bookmarks) {
           // Skip if bookmark has any excluded tags
           if (!bookmark.favourited && this.settings.excludedTags.length > 0) {
-            const bookmarkTags = bookmark.tags.map((tag) =>
-              tag.name.toLowerCase(),
-            );
-            const hasExcludedTag = this.settings.excludedTags.some(
-              (excludedTag) => bookmarkTags.includes(excludedTag.toLowerCase()),
+            const bookmarkTags = bookmark.tags.map((tag) => tag.name.toLowerCase());
+            const hasExcludedTag = this.settings.excludedTags.some((excludedTag) =>
+              bookmarkTags.includes(excludedTag.toLowerCase())
             );
             if (hasExcludedTag) {
               excludedByTags++;
@@ -343,54 +328,65 @@ export default class HoarderPlugin extends Plugin {
           }
 
           const title = this.getBookmarkTitle(bookmark);
-          const fileName = `${folderPath}/${this.sanitizeFileName(
-            title,
-            bookmark.createdAt,
-          )}.md`;
+          const fileName = `${folderPath}/${this.sanitizeFileName(title, bookmark.createdAt)}.md`;
 
           const fileExists = await this.app.vault.adapter.exists(fileName);
 
           if (fileExists) {
-            // Check for local changes to notes if bi-directional sync is enabled
-            if (this.settings.syncNotesToHoarder) {
-              const { currentNotes, originalNotes } =
-                await this.extractNotesFromFile(fileName);
-              const remoteNotes = bookmark.note || "";
+            // Check if we need to update the file
+            const file = this.app.vault.getAbstractFileByPath(fileName);
+            if (file instanceof TFile) {
+              const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
+              const storedModifiedTime = metadata?.modified
+                ? new Date(metadata.modified).getTime()
+                : 0;
+              const bookmarkModifiedTime = bookmark.modifiedAt
+                ? new Date(bookmark.modifiedAt).getTime()
+                : new Date(bookmark.createdAt).getTime();
 
-              // Only update if notes have changed from their original version
+              // Only update if:
+              // 1. updateExistingFiles is true OR
+              // 2. No modified timestamp in frontmatter (old file) OR
+              // 3. Bookmark has been modified since our last sync OR
+              // 4. Notes have changed from their original version
               if (
-                currentNotes !== null &&
-                originalNotes !== null &&
-                currentNotes !== originalNotes &&
-                currentNotes !== remoteNotes
+                this.settings.updateExistingFiles ||
+                !storedModifiedTime ||
+                bookmarkModifiedTime > storedModifiedTime ||
+                (this.settings.syncNotesToHoarder && metadata?.original_note !== bookmark.note)
               ) {
-                // Local notes have changed from original, update in Hoarder
-                const updated = await this.updateBookmarkInHoarder(
-                  bookmark.id,
-                  currentNotes,
-                );
-                if (updated) {
-                  updatedInHoarder++;
-                  bookmark.note = currentNotes; // Update the bookmark object with local notes
+                // Check for local changes to notes if bi-directional sync is enabled
+                if (this.settings.syncNotesToHoarder) {
+                  const { currentNotes, originalNotes } = await this.extractNotesFromFile(fileName);
+                  const remoteNotes = bookmark.note || "";
+
+                  // Only update if notes have changed from their original version
+                  if (
+                    currentNotes !== null &&
+                    originalNotes !== null &&
+                    currentNotes !== originalNotes &&
+                    currentNotes !== remoteNotes
+                  ) {
+                    // Local notes have changed from original, update in Hoarder
+                    const updated = await this.updateBookmarkInHoarder(bookmark.id, currentNotes);
+                    if (updated) {
+                      updatedInHoarder++;
+                      bookmark.note = currentNotes; // Update the bookmark object with local notes
+                    }
+                  }
+                }
+
+                if (this.settings.updateExistingFiles) {
+                  const content = await this.formatBookmarkAsMarkdown(bookmark, title);
+                  await this.app.vault.adapter.write(fileName, content);
+                  totalBookmarks++;
+                } else {
+                  this.skippedFiles++;
                 }
               }
             }
-
-            if (this.settings.updateExistingFiles) {
-              const content = await this.formatBookmarkAsMarkdown(
-                bookmark,
-                title,
-              );
-              await this.app.vault.adapter.write(fileName, content);
-              totalBookmarks++;
-            } else {
-              this.skippedFiles++;
-            }
           } else {
-            const content = await this.formatBookmarkAsMarkdown(
-              bookmark,
-              title,
-            );
+            const content = await this.formatBookmarkAsMarkdown(bookmark, title);
             await this.app.vault.create(fileName, content);
             totalBookmarks++;
           }
@@ -468,24 +464,16 @@ export default class HoarderPlugin extends Plugin {
     return `${dateStr}-${sanitizedTitle}`;
   }
 
-  async downloadImage(
-    url: string,
-    assetId: string,
-    title: string,
-  ): Promise<string | null> {
+  async downloadImage(url: string, assetId: string, title: string): Promise<string | null> {
     try {
       // Create attachments folder if it doesn't exist
-      if (
-        !(await this.app.vault.adapter.exists(this.settings.attachmentsFolder))
-      ) {
+      if (!(await this.app.vault.adapter.exists(this.settings.attachmentsFolder))) {
         await this.app.vault.createFolder(this.settings.attachmentsFolder);
       }
 
       // Get file extension from URL or default to jpg
       const extension = url.split(".").pop()?.toLowerCase() || "jpg";
-      const safeExtension = ["jpg", "jpeg", "png", "gif", "webp"].includes(
-        extension,
-      )
+      const safeExtension = ["jpg", "jpeg", "png", "gif", "webp"].includes(extension)
         ? extension
         : "jpg";
 
@@ -511,8 +499,7 @@ export default class HoarderPlugin extends Plugin {
       }
 
       const response = await fetch(url, { headers });
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const buffer = await response.arrayBuffer();
       await this.app.vault.adapter.writeBinary(filePath, buffer);
@@ -524,18 +511,11 @@ export default class HoarderPlugin extends Plugin {
     }
   }
 
-  async formatBookmarkAsMarkdown(
-    bookmark: HoarderBookmark,
-    title: string,
-  ): Promise<string> {
+  async formatBookmarkAsMarkdown(bookmark: HoarderBookmark, title: string): Promise<string> {
     const url =
-      bookmark.content.type === "link"
-        ? bookmark.content.url
-        : bookmark.content.sourceUrl;
+      bookmark.content.type === "link" ? bookmark.content.url : bookmark.content.sourceUrl;
     const description =
-      bookmark.content.type === "link"
-        ? bookmark.content.description
-        : bookmark.content.text;
+      bookmark.content.type === "link" ? bookmark.content.description : bookmark.content.text;
     const tags = bookmark.tags.map((tag) => tag.name);
 
     // Helper function to get asset URL
@@ -576,7 +556,7 @@ bookmark_id: "${bookmark.id}"
 url: ${escapeYaml(url)}
 title: ${escapeYaml(title)}
 date: ${new Date(bookmark.createdAt).toISOString()}
-tags:
+${bookmark.modifiedAt ? `modified: ${new Date(bookmark.modifiedAt).toISOString()}\n` : ""}tags:
   - ${tags.map(escapeTag).join("\n  - ")}
 note: ${escapeYaml(bookmark.note)}
 original_note: ${escapeYaml(bookmark.note)}
@@ -587,41 +567,37 @@ summary: ${escapeYaml(bookmark.summary)}
 `;
 
     // Handle images
-    if (
-      bookmark.content.type === "asset" &&
-      bookmark.content.assetType === "image"
-    ) {
-      // If we have an asset ID, download and use local path
+    if (bookmark.content.type === "asset" && bookmark.content.assetType === "image") {
       if (bookmark.content.assetId) {
         const assetUrl = getAssetUrl(bookmark.content.assetId);
-        const imagePath = await this.downloadImage(
-          assetUrl,
-          bookmark.content.assetId,
-          title,
-        );
-        if (imagePath) {
-          content += `\n![${title}](${imagePath})\n`;
+        if (this.settings.downloadAssets) {
+          const imagePath = await this.downloadImage(assetUrl, bookmark.content.assetId, title);
+          if (imagePath) {
+            content += `\n![${title}](${imagePath})\n`;
+          }
+        } else {
+          content += `\n![${title}](${assetUrl})\n`;
         }
-      }
-      // Otherwise use source URL directly
-      else if (bookmark.content.sourceUrl) {
+      } else if (bookmark.content.sourceUrl) {
         content += `\n![${title}](${bookmark.content.sourceUrl})\n`;
       }
     } else if (bookmark.content.type === "link") {
-      // For link types, only download Hoarder-hosted images
+      // For link types, handle Hoarder-hosted images and external images
       if (bookmark.content.imageAssetId) {
         const assetUrl = getAssetUrl(bookmark.content.imageAssetId);
-        const imagePath = await this.downloadImage(
-          assetUrl,
-          bookmark.content.imageAssetId,
-          title,
-        );
-        if (imagePath) {
-          content += `\n![${title}](${imagePath})\n`;
+        if (this.settings.downloadAssets) {
+          const imagePath = await this.downloadImage(
+            assetUrl,
+            bookmark.content.imageAssetId,
+            title
+          );
+          if (imagePath) {
+            content += `\n![${title}](${imagePath})\n`;
+          }
+        } else {
+          content += `\n![${title}](${assetUrl})\n`;
         }
-      }
-      // Use external image URL directly
-      else if (bookmark.content.imageUrl) {
+      } else if (bookmark.content.imageUrl) {
         content += `\n![${title}](${bookmark.content.imageUrl})\n`;
       }
     }
@@ -650,9 +626,7 @@ summary: ${escapeYaml(bookmark.summary)}
   private async handleFileModification(file: TFile) {
     try {
       // Extract current and original notes
-      const { currentNotes, originalNotes } = await this.extractNotesFromFile(
-        file.path,
-      );
+      const { currentNotes, originalNotes } = await this.extractNotesFromFile(file.path);
 
       // Convert null to empty string for comparison
       const currentNotesStr = currentNotes || "";
@@ -675,10 +649,7 @@ summary: ${escapeYaml(bookmark.summary)}
           bookmarkId,
         });
 
-        const updated = await this.updateBookmarkInHoarder(
-          bookmarkId,
-          currentNotesStr,
-        );
+        const updated = await this.updateBookmarkInHoarder(bookmarkId, currentNotesStr);
         if (updated) {
           // Store these notes as the last synced version
           this.lastSyncedNotes = currentNotesStr;
@@ -687,17 +658,13 @@ summary: ${escapeYaml(bookmark.summary)}
           setTimeout(async () => {
             try {
               // Re-read the file to get the latest content
-              const { currentNotes: latestNotes } =
-                await this.extractNotesFromFile(file.path);
+              const { currentNotes: latestNotes } = await this.extractNotesFromFile(file.path);
 
               // Only update frontmatter if notes haven't changed since sync
               if (latestNotes === currentNotesStr) {
-                await this.app.fileManager.processFrontMatter(
-                  file,
-                  (frontmatter) => {
-                    frontmatter["original_note"] = currentNotesStr;
-                  },
-                );
+                await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+                  frontmatter["original_note"] = currentNotesStr;
+                });
               }
             } catch (error) {
               console.error("Error updating frontmatter:", error);

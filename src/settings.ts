@@ -1,12 +1,13 @@
 import {
+  AbstractInputSuggest,
   App,
+  Notice,
   PluginSettingTab,
   Setting,
-  Notice,
-  TFolder,
-  AbstractInputSuggest,
   TAbstractFile,
+  TFolder,
 } from "obsidian";
+
 import HoarderPlugin from "./main";
 
 export interface HoarderSettings {
@@ -21,6 +22,7 @@ export interface HoarderSettings {
   onlyFavorites: boolean;
   syncNotesToHoarder: boolean;
   excludedTags: string[];
+  downloadAssets: boolean;
 }
 
 export const DEFAULT_SETTINGS: HoarderSettings = {
@@ -35,6 +37,7 @@ export const DEFAULT_SETTINGS: HoarderSettings = {
   onlyFavorites: false,
   syncNotesToHoarder: true,
   excludedTags: [],
+  downloadAssets: true,
 };
 
 class FolderSuggest extends AbstractInputSuggest<TFolder> {
@@ -49,9 +52,7 @@ class FolderSuggest extends AbstractInputSuggest<TFolder> {
 
   getSuggestions(inputStr: string): TFolder[] {
     const lowerCaseInputStr = inputStr.toLowerCase();
-    return this.folders.filter((folder) =>
-      folder.path.toLowerCase().contains(lowerCaseInputStr),
-    );
+    return this.folders.filter((folder) => folder.path.toLowerCase().contains(lowerCaseInputStr));
   }
 
   renderSuggestion(folder: TFolder, el: HTMLElement): void {
@@ -111,14 +112,12 @@ export class HoarderSettingTab extends PluginSettingTab {
             this.plugin.settings.apiKey = value;
             await this.plugin.saveSettings();
           })
-          .inputEl.addClass("hoarder-wide-input"),
+          .inputEl.addClass("hoarder-wide-input")
       );
 
     new Setting(containerEl)
       .setName("Api endpoint")
-      .setDesc(
-        "Hoarder API endpoint URL (default: https://api.hoarder.app/api/v1)",
-      )
+      .setDesc("Hoarder API endpoint URL (default: https://api.hoarder.app/api/v1)")
       .addText((text) =>
         text
           .setPlaceholder("Enter API endpoint")
@@ -127,7 +126,7 @@ export class HoarderSettingTab extends PluginSettingTab {
             this.plugin.settings.apiEndpoint = value;
             await this.plugin.saveSettings();
           })
-          .inputEl.addClass("hoarder-wide-input"),
+          .inputEl.addClass("hoarder-wide-input")
       );
 
     new Setting(containerEl)
@@ -179,62 +178,52 @@ export class HoarderSettingTab extends PluginSettingTab {
               this.plugin.startPeriodicSync();
             }
           })
-          .inputEl.addClass("hoarder-small-input"),
+          .inputEl.addClass("hoarder-small-input")
       );
 
     new Setting(containerEl)
       .setName("Update existing files")
       .setDesc("Whether to update or skip existing bookmark files")
       .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.updateExistingFiles)
-          .onChange(async (value) => {
-            this.plugin.settings.updateExistingFiles = value;
-            await this.plugin.saveSettings();
-          }),
+        toggle.setValue(this.plugin.settings.updateExistingFiles).onChange(async (value) => {
+          this.plugin.settings.updateExistingFiles = value;
+          await this.plugin.saveSettings();
+        })
       );
 
     new Setting(containerEl)
       .setName("Exclude archived")
       .setDesc("Exclude archived bookmarks from sync")
       .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.excludeArchived)
-          .onChange(async (value) => {
-            this.plugin.settings.excludeArchived = value;
-            await this.plugin.saveSettings();
-          }),
+        toggle.setValue(this.plugin.settings.excludeArchived).onChange(async (value) => {
+          this.plugin.settings.excludeArchived = value;
+          await this.plugin.saveSettings();
+        })
       );
 
     new Setting(containerEl)
       .setName("Only favorites")
       .setDesc("Only sync favorited bookmarks")
       .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.onlyFavorites)
-          .onChange(async (value) => {
-            this.plugin.settings.onlyFavorites = value;
-            await this.plugin.saveSettings();
-          }),
+        toggle.setValue(this.plugin.settings.onlyFavorites).onChange(async (value) => {
+          this.plugin.settings.onlyFavorites = value;
+          await this.plugin.saveSettings();
+        })
       );
 
     new Setting(containerEl)
       .setName("Sync notes to Hoarder")
       .setDesc("Whether to sync notes to Hoarder")
       .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.syncNotesToHoarder)
-          .onChange(async (value) => {
-            this.plugin.settings.syncNotesToHoarder = value;
-            await this.plugin.saveSettings();
-          }),
+        toggle.setValue(this.plugin.settings.syncNotesToHoarder).onChange(async (value) => {
+          this.plugin.settings.syncNotesToHoarder = value;
+          await this.plugin.saveSettings();
+        })
       );
 
     new Setting(containerEl)
       .setName("Excluded tags")
-      .setDesc(
-        "Bookmarks with these tags will not be synced (comma-separated), unless favorited",
-      )
+      .setDesc("Bookmarks with these tags will not be synced (comma-separated), unless favorited")
       .addText((text) =>
         text
           .setPlaceholder("private, secret, draft")
@@ -247,7 +236,19 @@ export class HoarderSettingTab extends PluginSettingTab {
               .filter((tag) => tag.length > 0);
             await this.plugin.saveSettings();
           })
-          .inputEl.addClass("hoarder-wide-input"),
+          .inputEl.addClass("hoarder-wide-input")
+      );
+
+    new Setting(containerEl)
+      .setName("Download assets")
+      .setDesc(
+        "Download images and other assets locally (if disabled, assets will be embedded using their source URLs)"
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.downloadAssets).onChange(async (value) => {
+          this.plugin.settings.downloadAssets = value;
+          await this.plugin.saveSettings();
+        })
       );
 
     // Add Sync Now button
@@ -272,9 +273,7 @@ export class HoarderSettingTab extends PluginSettingTab {
     // Add Last Sync Time
     if (this.plugin.settings.lastSyncTimestamp > 0) {
       containerEl.createEl("div", {
-        text: `Last synced: ${new Date(
-          this.plugin.settings.lastSyncTimestamp,
-        ).toLocaleString()}`,
+        text: `Last synced: ${new Date(this.plugin.settings.lastSyncTimestamp).toLocaleString()}`,
         cls: "setting-item-description",
       });
     }
