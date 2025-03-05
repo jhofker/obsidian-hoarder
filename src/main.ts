@@ -328,7 +328,7 @@ export default class HoarderPlugin extends Plugin {
           }
 
           const title = this.getBookmarkTitle(bookmark);
-          const fileName = `${folderPath}/${this.sanitizeFileName(title, bookmark.createdAt)}.md`;
+          const fileName = `${folderPath}/${this.sanitizeFileName(title)}.md`;
 
           const fileExists = await this.app.vault.adapter.exists(fileName);
 
@@ -432,11 +432,7 @@ export default class HoarderPlugin extends Plugin {
     }
   }
 
-  sanitizeFileName(title: string, created_at: string): string {
-    // Format the date as YYYY-MM-DD
-    const date = new Date(created_at);
-    const dateStr = date.toISOString().split("T")[0]; // This is 10 characters
-
+  sanitizeFileName(title: string): string {
     // Sanitize the title
     let sanitizedTitle = title
       .replace(/[\\/:*?"<>|]/g, "-") // Replace invalid characters with dash
@@ -445,8 +441,7 @@ export default class HoarderPlugin extends Plugin {
       .replace(/^-|-$/g, ""); // Remove dashes from start and end
 
     // Calculate how much space we have for the title
-    // 50 (max) - 10 (date) - 1 (dash) - 3 (.md) = 36 characters for title
-    const maxTitleLength = 36;
+    const maxTitleLength = 50;
 
     if (sanitizedTitle.length > maxTitleLength) {
       // If title is too long, try to cut at a word boundary
@@ -461,7 +456,7 @@ export default class HoarderPlugin extends Plugin {
       }
     }
 
-    return `${dateStr}-${sanitizedTitle}`;
+    return sanitizedTitle;
   }
 
   async downloadImage(url: string, assetId: string, title: string): Promise<string | null> {
@@ -477,17 +472,18 @@ export default class HoarderPlugin extends Plugin {
         ? extension
         : "jpg";
 
-      // Create a safe filename
-      const safeTitle = this.sanitizeFileName(title, new Date().toISOString())
-        .split("-")
-        .slice(1)
-        .join("-");
-      const fileName = `${assetId}-${safeTitle}.${safeExtension}`;
+      // Create a safe filename using just the assetId and a short title
+      const safeTitle = this.sanitizeFileName(title);
+      const fileName = `${assetId}${safeTitle ? "-" + safeTitle : ""}.${safeExtension}`;
       const filePath = `${this.settings.attachmentsFolder}/${fileName}`;
 
-      // Check if file already exists
-      if (await this.app.vault.adapter.exists(filePath)) {
-        return filePath;
+      // Check if file already exists with any extension
+      const files = await this.app.vault.adapter.list(this.settings.attachmentsFolder);
+      const existingFile = files.files.find((file) =>
+        file.startsWith(`${this.settings.attachmentsFolder}/${assetId}`)
+      );
+      if (existingFile) {
+        return existingFile;
       }
 
       // Download the image
