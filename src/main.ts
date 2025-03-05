@@ -540,11 +540,13 @@ export default class HoarderPlugin extends Plugin {
 
     // Helper function to escape tag values
     const escapeTag = (tag: string): string => {
-      // Always quote tags to handle spaces and special characters
-      if (tag.includes('"')) {
-        return `'${tag}'`;
+      // Replace spaces with hyphens and handle other special characters
+      const processedTag = tag.replace(/\s+/g, "-");
+      // Always quote tags to handle other special characters
+      if (processedTag.includes('"')) {
+        return `'${processedTag}'`;
       }
-      return `"${tag}"`;
+      return `"${processedTag}"`;
     };
 
     let content = `---
