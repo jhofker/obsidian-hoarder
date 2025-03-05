@@ -328,7 +328,7 @@ export default class HoarderPlugin extends Plugin {
           }
 
           const title = this.getBookmarkTitle(bookmark);
-          const fileName = `${folderPath}/${this.sanitizeFileName(title)}.md`;
+          const fileName = `${folderPath}/${this.sanitizeFileName(title, bookmark.createdAt)}.md`;
 
           const fileExists = await this.app.vault.adapter.exists(fileName);
 
@@ -432,7 +432,11 @@ export default class HoarderPlugin extends Plugin {
     }
   }
 
-  sanitizeFileName(title: string): string {
+  sanitizeFileName(title: string, created_at: string): string {
+    // Format the date as YYYY-MM-DD
+    const date = new Date(created_at);
+    const dateStr = date.toISOString().split("T")[0]; // This is 10 characters
+
     // Sanitize the title
     let sanitizedTitle = title
       .replace(/[\\/:*?"<>|]/g, "-") // Replace invalid characters with dash
@@ -441,7 +445,35 @@ export default class HoarderPlugin extends Plugin {
       .replace(/^-|-$/g, ""); // Remove dashes from start and end
 
     // Calculate how much space we have for the title
-    const maxTitleLength = 50;
+    // 50 (max) - 10 (date) - 1 (dash) - 3 (.md) = 36 characters for title
+    const maxTitleLength = 36;
+
+    if (sanitizedTitle.length > maxTitleLength) {
+      // If title is too long, try to cut at a word boundary
+      const truncated = sanitizedTitle.substring(0, maxTitleLength);
+      const lastDash = truncated.lastIndexOf("-");
+      if (lastDash > maxTitleLength / 2) {
+        // If we can find a reasonable word break, use it
+        sanitizedTitle = truncated.substring(0, lastDash);
+      } else {
+        // Otherwise just truncate
+        sanitizedTitle = truncated;
+      }
+    }
+
+    return `${dateStr}-${sanitizedTitle}`;
+  }
+
+  sanitizeAssetFileName(title: string): string {
+    // Sanitize the title
+    let sanitizedTitle = title
+      .replace(/[\\/:*?"<>|]/g, "-") // Replace invalid characters with dash
+      .replace(/\s+/g, "-") // Replace spaces with dash
+      .replace(/-+/g, "-") // Replace multiple dashes with single dash
+      .replace(/^-|-$/g, ""); // Remove dashes from start and end
+
+    // Use a shorter max length for asset filenames
+    const maxTitleLength = 30;
 
     if (sanitizedTitle.length > maxTitleLength) {
       // If title is too long, try to cut at a word boundary
@@ -473,7 +505,7 @@ export default class HoarderPlugin extends Plugin {
         : "jpg";
 
       // Create a safe filename using just the assetId and a short title
-      const safeTitle = this.sanitizeFileName(title);
+      const safeTitle = this.sanitizeAssetFileName(title);
       const fileName = `${assetId}${safeTitle ? "-" + safeTitle : ""}.${safeExtension}`;
       const filePath = `${this.settings.attachmentsFolder}/${fileName}`;
 
@@ -617,6 +649,7 @@ summary: ${escapeYaml(bookmark.summary)}
     if (url && bookmark.content.type !== "asset") {
       content += `\n[Visit Link](${url})\n`;
     }
+    content += `\n[View in Hoarder](${this.settings.apiEndpoint.replace("/api/v1", "/dashboard/preview")}/${bookmark.id})`;
 
     return content;
   }
