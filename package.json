@@ -19,16 +19,16 @@
   "author": "Jordan Hofker <jhofker@gmail.com>",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
-    "@trivago/prettier-plugin-sort-imports": "^5.2.0",
-    "builtin-modules": "^4.0.0",
-    "esbuild": "^0.24.0",
-    "obsidian": "^1.7.0",
-    "prettier": "^3.4.2",
-    "prompt-sync": "^4.2.0",
-    "tslib": "^2.8.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^22",
+    "@typescript-eslint/eslint-plugin": "^8",
+    "@typescript-eslint/parser": "^8",
+    "@trivago/prettier-plugin-sort-imports": "^5",
+    "builtin-modules": "^4",
+    "esbuild": "^0.24",
+    "obsidian": "^1.7",
+    "prettier": "^3",
+    "prompt-sync": "^4",
+    "tslib": "^2",
+    "typescript": "^5"
   }
 }
