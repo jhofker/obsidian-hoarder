@@ -1,10 +1,10 @@
-# Hoarder Plugin for Obsidian
+# ~Hoarder~ Karakeep Plugin for Obsidian
 
-This plugin syncs your Hoarder bookmarks with Obsidian, creating markdown notes for each bookmark in a designated folder.
+This plugin syncs your [Karakeep](https://karakeep.app/) bookmarks with Obsidian, creating markdown notes for each bookmark in a designated folder.
 
 ## Features
 
-- Automatically syncs bookmarks from Hoarder every hour (configurable)
+- Automatically syncs bookmarks from Karakeep every hour (configurable)
 - Creates markdown files for each bookmark with metadata
 - Configurable sync folder and API settings
 - Updates existing bookmarks if they've changed
@@ -19,10 +19,10 @@ This plugin syncs your Hoarder bookmarks with Obsidian, creating markdown notes 
 
 1. Open Obsidian Settings
 2. Navigate to "Hoarder Sync" under "Community Plugins"
-3. Enter your Hoarder API key
+3. Enter your Karakeep API key
 4. (Optional) Modify the sync interval and folder settings
 
-## Hoarder Configuration
+## Karakeep Configuration
 
 Ensure your CORS policy is set to allow requests from your Obsidian instance. In Traefik, add the following as a middleware:
 
@@ -38,15 +38,15 @@ Ensure your CORS policy is set to allow requests from your Obsidian instance. In
 
 ## Settings
 
-- **Api key**: Your Hoarder API key (required)
-- **Api endpoint**: The Hoarder API endpoint (default: https://api.hoarder.app/api/v1)
+- **Api key**: Your Karakeep API key (required)
+- **Api endpoint**: The Karakeep API endpoint (default: https://api.karakeep.app/api/v1)
 - **Sync folder**: The folder where bookmark notes will be created (default: "Hoarder")
 - **Attachments folder**: The folder where bookmark images will be saved (default: "Hoarder/attachments")
 - **Sync interval**: How often to sync in minutes (default: 60)
 - **Update existing files**: Whether to update or skip existing bookmark files (default: false)
 - **Exclude archived**: Exclude archived bookmarks from sync (default: true)
 - **Only favorites**: Only sync favorited bookmarks (default: false)
-- **Sync notes to Hoarder**: Whether to sync notes back to Hoarder (default: true)
+- **Sync notes to Karakeep**: Whether to sync notes back to Karakeep (default: true)
 - **Excluded tags**: Bookmarks with these tags will not be synced (comma-separated), unless favorited (default: empty)
 
 ## Development
