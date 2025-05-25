@@ -48,6 +48,35 @@ Ensure your CORS policy is set to allow requests from your Obsidian instance. In
 - **Only favorites**: Only sync favorited bookmarks (default: false)
 - **Sync notes to Karakeep**: Whether to sync notes back to Karakeep (default: true)
 - **Excluded tags**: Bookmarks with these tags will not be synced (comma-separated), unless favorited (default: empty)
+- **Sync deletions**: Automatically handle bookmarks that are deleted in Karakeep (default: false)
+- **Deletion action**: What to do with local files when bookmarks are deleted in Karakeep - options: "Delete file", "Move to archive folder", or "Add deletion tag" (default: "Delete file")
+- **Archive folder**: Folder to move deleted bookmarks to when using "Move to archive folder" action (default: "Archive")
+- **Deletion tag**: Tag to add to files when bookmarks are deleted and using "Add deletion tag" action (default: "deleted")
+- **Handle archived bookmarks**: Separately handle bookmarks that are archived (not deleted) in Karakeep (default: false)
+- **Archived bookmark action**: What to do with local files when bookmarks are archived in Karakeep - options: "Do nothing", "Delete file", "Move to archive folder", or "Add archived tag" (default: "Delete file")
+- **Archived bookmark folder**: Folder to move archived bookmarks to when using "Move to archive folder" action (default: "Archive")
+- **Archived bookmark tag**: Tag to add to files when bookmarks are archived and using "Add archived tag" action (default: "archived")
+
+## Deletion and Archive Sync
+
+The plugin now properly distinguishes between **deleted** and **archived** bookmarks in Karakeep:
+
+### Deleted Bookmarks
+When "Sync deletions" is enabled, the plugin detects bookmarks that have been completely deleted from Karakeep and handles them according to your "Deletion action" setting:
+
+1. **Delete file**: Permanently removes the markdown file from your vault
+2. **Move to archive folder**: Moves the file to a specified archive folder (useful for keeping a backup)
+3. **Add deletion tag**: Adds a tag to the file's frontmatter to mark it as deleted (useful for manual review)
+
+### Archived Bookmarks
+When "Handle archived bookmarks" is enabled, the plugin separately handles bookmarks that are archived (but not deleted) in Karakeep:
+
+1. **Do nothing**: Leaves the file unchanged (useful if you want to keep archived bookmarks in Obsidian)
+2. **Delete file**: Removes the file from your vault
+3. **Move to archive folder**: Moves the file to a specified archive folder
+4. **Add archived tag**: Adds a tag to mark the file as archived
+
+This gives you fine-grained control over how your Obsidian vault reflects the state of your Karakeep bookmarks.
 
 ## Development
 

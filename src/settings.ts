@@ -1,12 +1,4 @@
-import {
-  AbstractInputSuggest,
-  App,
-  Notice,
-  PluginSettingTab,
-  Setting,
-  TAbstractFile,
-  TFolder,
-} from "obsidian";
+import { AbstractInputSuggest, App, Notice, PluginSettingTab, Setting, TFolder } from "obsidian";
 
 import HoarderPlugin from "./main";
 
@@ -24,6 +16,14 @@ export interface HoarderSettings {
   excludedTags: string[];
   includedTags: string[];
   downloadAssets: boolean;
+  syncDeletions: boolean;
+  deletionAction: "delete" | "archive" | "tag";
+  deletionTag: string;
+  archiveFolder: string;
+  handleArchivedBookmarks: boolean;
+  archivedBookmarkAction: "delete" | "archive" | "tag" | "ignore";
+  archivedBookmarkTag: string;
+  archivedBookmarkFolder: string;
 }
 
 export const DEFAULT_SETTINGS: HoarderSettings = {
@@ -40,6 +40,14 @@ export const DEFAULT_SETTINGS: HoarderSettings = {
   excludedTags: [],
   includedTags: [],
   downloadAssets: true,
+  syncDeletions: false,
+  deletionAction: "delete",
+  deletionTag: "deleted",
+  archiveFolder: "Hoarder/deleted",
+  handleArchivedBookmarks: false,
+  archivedBookmarkAction: "delete",
+  archivedBookmarkTag: "archived",
+  archivedBookmarkFolder: "Hoarder/archived",
 };
 
 class FolderSuggest extends AbstractInputSuggest<TFolder> {
@@ -119,7 +127,7 @@ export class HoarderSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Api endpoint")
-      .setDesc("Hoarder API endpoint URL (default: https://api.hoarder.app/api/v1)")
+      .setDesc("Hoarder API endpoint URL (default: https://api.karakeep.app/api/v1)")
       .addText((text) =>
         text
           .setPlaceholder("Enter API endpoint")
@@ -270,6 +278,137 @@ export class HoarderSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         })
       );
+
+    // New settings for deletion/archiving sync
+    const syncDeletionsToggle = new Setting(containerEl)
+      .setName("Sync deletions")
+      .setDesc("Automatically handle bookmarks that are deleted in Karakeep")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.syncDeletions).onChange(async (value) => {
+          this.plugin.settings.syncDeletions = value;
+          await this.plugin.saveSettings();
+          this.display(); // Refresh the display to show/hide conditional settings
+        })
+      );
+
+    if (this.plugin.settings.syncDeletions) {
+      const deletionActionSetting = new Setting(containerEl)
+        .setName("Deletion action")
+        .setDesc("What to do with local files when bookmarks are deleted in Karakeep")
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption("delete", "Delete file")
+            .addOption("archive", "Move to archive folder")
+            .addOption("tag", "Add deletion tag")
+            .setValue(this.plugin.settings.deletionAction)
+            .onChange(async (value: "delete" | "archive" | "tag") => {
+              this.plugin.settings.deletionAction = value;
+              await this.plugin.saveSettings();
+              this.display(); // Refresh the display to show/hide conditional settings
+            })
+        );
+
+      if (this.plugin.settings.deletionAction === "archive") {
+        new Setting(containerEl)
+          .setName("Archive folder")
+          .setDesc("Folder to move deleted bookmarks to")
+          .addText((text) => {
+            text
+              .setPlaceholder("Example: Hoarder/deleted")
+              .setValue(this.plugin.settings.archiveFolder)
+              .onChange(async (value) => {
+                this.plugin.settings.archiveFolder = value;
+                await this.plugin.saveSettings();
+              });
+
+            text.inputEl.addClass("hoarder-medium-input");
+            new FolderSuggest(this.app, text.inputEl);
+            return text;
+          });
+      }
+
+      if (this.plugin.settings.deletionAction === "tag") {
+        new Setting(containerEl)
+          .setName("Deletion tag")
+          .setDesc("Tag to add to files when bookmarks are deleted")
+          .addText((text) =>
+            text
+              .setPlaceholder("deleted")
+              .setValue(this.plugin.settings.deletionTag)
+              .onChange(async (value) => {
+                this.plugin.settings.deletionTag = value;
+                await this.plugin.saveSettings();
+              })
+              .inputEl.addClass("hoarder-medium-input")
+          );
+      }
+    }
+
+    // New settings for archived bookmarks
+    const handleArchivedToggle = new Setting(containerEl)
+      .setName("Handle archived bookmarks")
+      .setDesc("Separately handle bookmarks that are archived (not deleted) in Karakeep")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.handleArchivedBookmarks).onChange(async (value) => {
+          this.plugin.settings.handleArchivedBookmarks = value;
+          await this.plugin.saveSettings();
+          this.display(); // Refresh the display to show/hide conditional settings
+        })
+      );
+
+    if (this.plugin.settings.handleArchivedBookmarks) {
+      const archivedActionSetting = new Setting(containerEl)
+        .setName("Archived bookmark action")
+        .setDesc("What to do with local files when bookmarks are archived in Karakeep")
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption("ignore", "Do nothing")
+            .addOption("delete", "Delete file")
+            .addOption("archive", "Move to archive folder")
+            .addOption("tag", "Add archived tag")
+            .setValue(this.plugin.settings.archivedBookmarkAction)
+            .onChange(async (value: "delete" | "archive" | "tag" | "ignore") => {
+              this.plugin.settings.archivedBookmarkAction = value;
+              await this.plugin.saveSettings();
+              this.display(); // Refresh the display to show/hide conditional settings
+            })
+        );
+
+      if (this.plugin.settings.archivedBookmarkAction === "archive") {
+        new Setting(containerEl)
+          .setName("Archived bookmark folder")
+          .setDesc("Folder to move archived bookmarks to")
+          .addText((text) => {
+            text
+              .setPlaceholder("Example: Hoarder/archived")
+              .setValue(this.plugin.settings.archivedBookmarkFolder)
+              .onChange(async (value) => {
+                this.plugin.settings.archivedBookmarkFolder = value;
+                await this.plugin.saveSettings();
+              });
+
+            text.inputEl.addClass("hoarder-medium-input");
+            new FolderSuggest(this.app, text.inputEl);
+            return text;
+          });
+      }
+
+      if (this.plugin.settings.archivedBookmarkAction === "tag") {
+        new Setting(containerEl)
+          .setName("Archived bookmark tag")
+          .setDesc("Tag to add to files when bookmarks are archived")
+          .addText((text) =>
+            text
+              .setPlaceholder("archived")
+              .setValue(this.plugin.settings.archivedBookmarkTag)
+              .onChange(async (value) => {
+                this.plugin.settings.archivedBookmarkTag = value;
+                await this.plugin.saveSettings();
+              })
+              .inputEl.addClass("hoarder-medium-input")
+          );
+      }
+    }
 
     // Add Sync Now button
     new Setting(containerEl)

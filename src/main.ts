@@ -171,6 +171,37 @@ export default class HoarderPlugin extends Plugin {
     return data;
   }
 
+  async fetchAllBookmarks(includeArchived: boolean = false): Promise<HoarderBookmark[]> {
+    if (!this.client) {
+      throw new Error("Client not initialized");
+    }
+
+    const allBookmarks: HoarderBookmark[] = [];
+    let cursor: string | undefined;
+
+    do {
+      const { data, error } = await this.client.GET("/bookmarks", {
+        params: {
+          query: {
+            limit: 100,
+            cursor: cursor || undefined,
+            archived: includeArchived ? undefined : false,
+            favourited: this.settings.onlyFavorites ? true : undefined,
+          },
+        },
+      });
+
+      if (error) {
+        throw new Error(`API error: ${error}`);
+      }
+
+      allBookmarks.push(...(data.bookmarks || []));
+      cursor = data.nextCursor || undefined;
+    } while (cursor);
+
+    return allBookmarks;
+  }
+
   getBookmarkTitle(bookmark: HoarderBookmark): string {
     // Try main title first
     if (bookmark.title) {
@@ -288,6 +319,156 @@ export default class HoarderPlugin extends Plugin {
     this.events.trigger("sync-state-change", value);
   }
 
+  async getLocalBookmarkFiles(): Promise<Map<string, string>> {
+    const bookmarkFiles = new Map<string, string>();
+    const folderPath = this.settings.syncFolder;
+
+    if (!(await this.app.vault.adapter.exists(folderPath))) {
+      return bookmarkFiles;
+    }
+
+    const files = this.app.vault.getMarkdownFiles();
+    for (const file of files) {
+      if (file.path.startsWith(folderPath) && file.path.endsWith(".md")) {
+        const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        const bookmarkId = metadata?.bookmark_id;
+        if (bookmarkId) {
+          bookmarkFiles.set(bookmarkId, file.path);
+        }
+      }
+    }
+
+    return bookmarkFiles;
+  }
+
+  async handleDeletedAndArchivedBookmarks(
+    localBookmarkFiles: Map<string, string>,
+    activeBookmarkIds: Set<string>,
+    archivedBookmarkIds: Set<string>
+  ): Promise<{ deleted: number; archived: number; tagged: number; archivedHandled: number }> {
+    let deleted = 0;
+    let archived = 0;
+    let tagged = 0;
+    let archivedHandled = 0;
+
+    if (!this.settings.syncDeletions && !this.settings.handleArchivedBookmarks) {
+      return { deleted, archived, tagged, archivedHandled };
+    }
+
+    // Find bookmarks that exist locally but not in active bookmarks
+    const localBookmarkIds = Array.from(localBookmarkFiles.keys());
+
+    for (const bookmarkId of localBookmarkIds) {
+      const filePath = localBookmarkFiles.get(bookmarkId);
+      if (!filePath) continue;
+
+      const file = this.app.vault.getAbstractFileByPath(filePath);
+      if (!(file instanceof TFile)) continue;
+
+      const isActive = activeBookmarkIds.has(bookmarkId);
+      const isArchived = archivedBookmarkIds.has(bookmarkId);
+
+      try {
+        if (!isActive && !isArchived) {
+          // Bookmark is completely deleted from Karakeep
+          if (this.settings.syncDeletions) {
+            switch (this.settings.deletionAction) {
+              case "delete":
+                await this.app.vault.delete(file);
+                deleted++;
+                break;
+
+              case "archive":
+                await this.moveToArchiveFolder(file, this.settings.archiveFolder);
+                archived++;
+                break;
+
+              case "tag":
+                await this.addDeletionTag(file, this.settings.deletionTag);
+                tagged++;
+                break;
+            }
+          }
+        } else if (!isActive && isArchived) {
+          // Bookmark is archived in Karakeep
+          if (
+            this.settings.handleArchivedBookmarks &&
+            this.settings.archivedBookmarkAction !== "ignore"
+          ) {
+            switch (this.settings.archivedBookmarkAction) {
+              case "delete":
+                await this.app.vault.delete(file);
+                archivedHandled++;
+                break;
+
+              case "archive":
+                await this.moveToArchiveFolder(file, this.settings.archivedBookmarkFolder);
+                archivedHandled++;
+                break;
+
+              case "tag":
+                await this.addDeletionTag(file, this.settings.archivedBookmarkTag);
+                archivedHandled++;
+                break;
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error handling bookmark ${bookmarkId}:`, error);
+      }
+    }
+
+    return { deleted, archived, tagged, archivedHandled };
+  }
+
+  async moveToArchiveFolder(file: TFile, archiveFolder: string): Promise<void> {
+    if (!archiveFolder) {
+      throw new Error("Archive folder not configured");
+    }
+
+    // Create archive folder if it doesn't exist
+    if (!(await this.app.vault.adapter.exists(archiveFolder))) {
+      await this.app.vault.createFolder(archiveFolder);
+    }
+
+    // Generate new path in archive folder
+    const fileName = file.name;
+    const newPath = `${archiveFolder}/${fileName}`;
+
+    // Handle name conflicts
+    let finalPath = newPath;
+    let counter = 1;
+    while (await this.app.vault.adapter.exists(finalPath)) {
+      const nameWithoutExt = fileName.replace(/\.md$/, "");
+      finalPath = `${archiveFolder}/${nameWithoutExt}-${counter}.md`;
+      counter++;
+    }
+
+    await this.app.fileManager.renameFile(file, finalPath);
+  }
+
+  async addDeletionTag(file: TFile, tag: string): Promise<void> {
+    if (!tag) {
+      throw new Error("Tag not configured");
+    }
+
+    await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+      if (!frontmatter.tags) {
+        frontmatter.tags = [];
+      }
+
+      // Ensure tags is an array
+      if (typeof frontmatter.tags === "string") {
+        frontmatter.tags = [frontmatter.tags];
+      }
+
+      // Add tag if not already present
+      if (!frontmatter.tags.includes(tag)) {
+        frontmatter.tags.push(tag);
+      }
+    });
+  }
+
   async syncBookmarks(): Promise<{ success: boolean; message: string }> {
     if (this.isSyncing) {
       return { success: false, message: "Sync already in progress" };
@@ -311,6 +492,19 @@ export default class HoarderPlugin extends Plugin {
       if (!(await this.app.vault.adapter.exists(folderPath))) {
         await this.app.vault.createFolder(folderPath);
       }
+
+      // Get existing local bookmark files for deletion detection
+      const localBookmarkFiles = await this.getLocalBookmarkFiles();
+
+      // Fetch all bookmarks to distinguish between active, archived, and deleted
+      const activeBookmarks = await this.fetchAllBookmarks(false); // Only active bookmarks
+      const allBookmarks = await this.fetchAllBookmarks(true); // All bookmarks including archived
+
+      const activeBookmarkIds = new Set(activeBookmarks.map((b) => b.id));
+      const allBookmarkIds = new Set(allBookmarks.map((b) => b.id));
+      const archivedBookmarkIds = new Set(
+        allBookmarks.filter((b) => b.archived && !activeBookmarkIds.has(b.id)).map((b) => b.id)
+      );
 
       let cursor: string | undefined;
 
@@ -414,6 +608,13 @@ export default class HoarderPlugin extends Plugin {
         }
       } while (cursor);
 
+      // Handle deleted/archived bookmarks
+      const deletionResults = await this.handleDeletedAndArchivedBookmarks(
+        localBookmarkFiles,
+        activeBookmarkIds,
+        archivedBookmarkIds
+      );
+
       // Update last sync timestamp
       this.settings.lastSyncTimestamp = Date.now();
       await this.saveSettings();
@@ -440,6 +641,28 @@ export default class HoarderPlugin extends Plugin {
         message += `, included ${includedByTags} bookmark${
           includedByTags === 1 ? "" : "s"
         } by tags`;
+      }
+
+      // Add deletion results to message
+      const totalDeleted =
+        deletionResults.deleted + deletionResults.archived + deletionResults.tagged;
+      const totalArchived = deletionResults.archivedHandled;
+      if (totalDeleted > 0 || totalArchived > 0) {
+        if (totalDeleted > 0) {
+          message += `, processed ${totalDeleted} deleted bookmark${totalDeleted === 1 ? "" : "s"}`;
+          if (deletionResults.deleted > 0) {
+            message += ` (${deletionResults.deleted} deleted)`;
+          }
+          if (deletionResults.archived > 0) {
+            message += ` (${deletionResults.archived} archived)`;
+          }
+          if (deletionResults.tagged > 0) {
+            message += ` (${deletionResults.tagged} tagged)`;
+          }
+        }
+        if (totalArchived > 0) {
+          message += `, handled ${totalArchived} archived bookmark${totalArchived === 1 ? "" : "s"}`;
+        }
       }
 
       return {
