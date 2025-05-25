@@ -1,6 +1,6 @@
 {
   "name": "obsidian-hoarder",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Sync your Hoarder bookmarks with Obsidian",
   "main": "dist/main.js",
   "scripts": {
@@ -19,16 +19,19 @@
   "author": "Jordan Hofker <jhofker@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "@trivago/prettier-plugin-sort-imports": "^5",
     "@types/node": "^22",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
-    "@trivago/prettier-plugin-sort-imports": "^5",
     "builtin-modules": "^4",
     "esbuild": "^0.24",
-    "obsidian": "^1.7",
+    "obsidian": "^1.8",
     "prettier": "^3",
     "prompt-sync": "^4",
     "tslib": "^2",
     "typescript": "^5"
+  },
+  "dependencies": {
+    "@karakeep/sdk": "^0.23"
   }
 }

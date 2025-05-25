@@ -1,7 +1,9 @@
+import { createHoarderClient } from "@karakeep/sdk";
 import { Events, Notice, Plugin, TFile } from "obsidian";
 
 import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings";
 
+// Type definitions based on the SDK structure
 interface HoarderTag {
   id: string;
   name: string;
@@ -11,41 +13,44 @@ interface HoarderTag {
 interface HoarderBookmarkContent {
   type: "link" | "text" | "asset" | "unknown";
   url?: string;
-  title?: string;
-  description?: string;
-  imageUrl?: string;
-  imageAssetId?: string;
-  screenshotAssetId?: string;
-  fullPageArchiveAssetId?: string;
-  videoAssetId?: string;
-  favicon?: string;
-  htmlContent?: string;
-  crawledAt?: string;
+  title?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+  imageAssetId?: string | null;
+  screenshotAssetId?: string | null;
+  fullPageArchiveAssetId?: string | null;
+  videoAssetId?: string | null;
+  favicon?: string | null;
+  htmlContent?: string | null;
+  crawledAt?: string | null;
   text?: string;
-  sourceUrl?: string;
+  sourceUrl?: string | null;
   assetType?: "image" | "pdf";
   assetId?: string;
-  fileName?: string;
+  fileName?: string | null;
 }
 
 interface HoarderBookmark {
   id: string;
   createdAt: string;
-  modifiedAt?: string;
-  title: string | null;
+  modifiedAt: string | null;
+  title?: string | null;
   archived: boolean;
   favourited: boolean;
   taggingStatus: "success" | "failure" | "pending" | null;
-  note: string | null;
-  summary: string | null;
+  note?: string | null;
+  summary?: string | null;
   tags: HoarderTag[];
   content: HoarderBookmarkContent;
+  assets: Array<{
+    id: string;
+    assetType: string;
+  }>;
 }
 
-interface HoarderResponse {
+interface PaginatedBookmarks {
   bookmarks: HoarderBookmark[];
-  total: number;
-  nextCursor?: string;
+  nextCursor: string | null;
 }
 
 export default class HoarderPlugin extends Plugin {
@@ -56,9 +61,13 @@ export default class HoarderPlugin extends Plugin {
   events: Events = new Events();
   private modificationTimeout: number | null = null;
   private lastSyncedNotes: string | null = null;
+  private client: ReturnType<typeof createHoarderClient> | null = null;
 
   async onload() {
     await this.loadSettings();
+
+    // Initialize the SDK client
+    this.initializeClient();
 
     // Add settings tab
     this.addSettingTab(new HoarderSettingTab(this.app, this));
@@ -117,6 +126,8 @@ export default class HoarderPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+    // Reinitialize client when settings change
+    this.initializeClient();
   }
 
   startPeriodicSync() {
@@ -137,38 +148,27 @@ export default class HoarderPlugin extends Plugin {
     }, interval);
   }
 
-  async fetchBookmarks(cursor?: string, limit: number = 100): Promise<HoarderResponse> {
-    const queryParams = new URLSearchParams({
-      limit: limit.toString(),
+  async fetchBookmarks(cursor?: string, limit: number = 100): Promise<PaginatedBookmarks> {
+    if (!this.client) {
+      throw new Error("Client not initialized");
+    }
+
+    const { data, error } = await this.client.GET("/bookmarks", {
+      params: {
+        query: {
+          limit,
+          cursor: cursor || undefined,
+          archived: this.settings.excludeArchived ? false : undefined,
+          favourited: this.settings.onlyFavorites ? true : undefined,
+        },
+      },
     });
 
-    if (cursor) {
-      queryParams.append("cursor", cursor);
+    if (error) {
+      throw new Error(`API error: ${error}`);
     }
 
-    if (this.settings.excludeArchived) {
-      queryParams.append("archived", "false");
-    }
-
-    if (this.settings.onlyFavorites) {
-      queryParams.append("favourited", "true");
-    }
-
-    const response = await fetch(
-      `${this.settings.apiEndpoint}/bookmarks?${queryParams.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${this.settings.apiKey}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return response.json() as Promise<HoarderResponse>;
+    return data;
   }
 
   getBookmarkTitle(bookmark: HoarderBookmark): string {
@@ -180,8 +180,8 @@ export default class HoarderPlugin extends Plugin {
     // Try content based on type
     if (bookmark.content.type === "link") {
       // For links, try content title, then URL
-      if (bookmark.content.title) {
-        return bookmark.content.title;
+      if (bookmark.title) {
+        return bookmark.title;
       }
       if (bookmark.content.url) {
         try {
@@ -257,19 +257,23 @@ export default class HoarderPlugin extends Plugin {
 
   async updateBookmarkInHoarder(bookmarkId: string, note: string): Promise<boolean> {
     try {
-      const response = await fetch(`${this.settings.apiEndpoint}/bookmarks/${bookmarkId}`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${this.settings.apiKey}`,
-          "Content-Type": "application/json",
+      if (!this.client) {
+        throw new Error("Client not initialized");
+      }
+
+      const { error } = await this.client.PATCH("/bookmarks/{bookmarkId}", {
+        params: {
+          path: {
+            bookmarkId,
+          },
         },
-        body: JSON.stringify({
-          note: note,
-        }),
+        body: {
+          note,
+        },
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (error) {
+        throw new Error(`API error: ${error}`);
       }
 
       return true;
@@ -731,5 +735,20 @@ summary: ${escapeYaml(bookmark.summary)}
       console.error("Error handling file modification:", error);
       new Notice("Failed to sync notes to Hoarder");
     }
+  }
+
+  private initializeClient() {
+    if (!this.settings.apiKey || !this.settings.apiEndpoint) {
+      this.client = null;
+      return;
+    }
+
+    this.client = createHoarderClient({
+      baseUrl: `${this.settings.apiEndpoint}/`,
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${this.settings.apiKey}`,
+      },
+    });
   }
 }
