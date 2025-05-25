@@ -701,11 +701,6 @@ summary: ${escapeYaml(bookmark.summary)}
 
       // Only update if notes have changed
       if (currentNotesStr !== originalNotesStr) {
-        console.debug("Syncing notes to Hoarder:", {
-          file: file.path,
-          bookmarkId,
-        });
-
         const updated = await this.updateBookmarkInHoarder(bookmarkId, currentNotesStr);
         if (updated) {
           // Store these notes as the last synced version
