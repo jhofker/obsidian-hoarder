@@ -298,6 +298,8 @@ export default class HoarderPlugin extends Plugin {
     this.skippedFiles = 0;
     let updatedInHoarder = 0;
     let excludedByTags = 0;
+    let includedByTags = 0;
+    let totalBookmarksProcessed = 0;
 
     try {
       // Create sync folder if it doesn't exist
@@ -311,13 +313,28 @@ export default class HoarderPlugin extends Plugin {
       do {
         const result = await this.fetchBookmarks(cursor);
         const bookmarks = result.bookmarks || [];
-        cursor = result.nextCursor;
+        cursor = result.nextCursor || undefined;
+        totalBookmarksProcessed += bookmarks.length;
 
         // Process each bookmark
         for (const bookmark of bookmarks) {
+          // Get bookmark tags for filtering
+          const bookmarkTags = bookmark.tags.map((tag) => tag.name.toLowerCase());
+
+          // Filter by included tags if specified
+          if (this.settings.includedTags.length > 0) {
+            const hasIncludedTag = this.settings.includedTags.some((includedTag) =>
+              bookmarkTags.includes(includedTag.toLowerCase())
+            );
+            if (!hasIncludedTag) {
+              excludedByTags++;
+              continue;
+            }
+            includedByTags++;
+          }
+
           // Skip if bookmark has any excluded tags
           if (!bookmark.favourited && this.settings.excludedTags.length > 0) {
-            const bookmarkTags = bookmark.tags.map((tag) => tag.name.toLowerCase());
             const hasExcludedTag = this.settings.excludedTags.some((excludedTag) =>
               bookmarkTags.includes(excludedTag.toLowerCase())
             );
@@ -408,11 +425,16 @@ export default class HoarderPlugin extends Plugin {
       if (updatedInHoarder > 0) {
         message += ` and updated ${updatedInHoarder} note${
           updatedInHoarder === 1 ? "" : "s"
-        } in Hoarder`;
+        } in Karakeep`;
       }
       if (excludedByTags > 0) {
         message += `, excluded ${excludedByTags} bookmark${
           excludedByTags === 1 ? "" : "s"
+        } by tags`;
+      }
+      if (includedByTags > 0 && this.settings.includedTags.length > 0) {
+        message += `, included ${includedByTags} bookmark${
+          includedByTags === 1 ? "" : "s"
         } by tags`;
       }
 

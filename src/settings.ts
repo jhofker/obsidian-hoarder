@@ -22,6 +22,7 @@ export interface HoarderSettings {
   onlyFavorites: boolean;
   syncNotesToHoarder: boolean;
   excludedTags: string[];
+  includedTags: string[];
   downloadAssets: boolean;
 }
 
@@ -37,6 +38,7 @@ export const DEFAULT_SETTINGS: HoarderSettings = {
   onlyFavorites: false,
   syncNotesToHoarder: true,
   excludedTags: [],
+  includedTags: [],
   downloadAssets: true,
 };
 
@@ -231,6 +233,24 @@ export class HoarderSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             // Split by comma, trim whitespace, and filter out empty strings
             this.plugin.settings.excludedTags = value
+              .split(",")
+              .map((tag) => tag.trim())
+              .filter((tag) => tag.length > 0);
+            await this.plugin.saveSettings();
+          })
+          .inputEl.addClass("hoarder-wide-input")
+      );
+
+    new Setting(containerEl)
+      .setName("Included tags")
+      .setDesc("Bookmarks with these tags will be synced (comma-separated)")
+      .addText((text) =>
+        text
+          .setPlaceholder("public, shared")
+          .setValue(this.plugin.settings.includedTags.join(", "))
+          .onChange(async (value) => {
+            // Split by comma, trim whitespace, and filter out empty strings
+            this.plugin.settings.includedTags = value
               .split(",")
               .map((tag) => tag.trim())
               .filter((tag) => tag.length > 0);
