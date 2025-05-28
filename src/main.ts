@@ -211,8 +211,8 @@ export default class HoarderPlugin extends Plugin {
     // Try content based on type
     if (bookmark.content.type === "link") {
       // For links, try content title, then URL
-      if (bookmark.title) {
-        return bookmark.title;
+      if (bookmark.content.title) {
+        return bookmark.content.title;
       }
       if (bookmark.content.url) {
         try {
