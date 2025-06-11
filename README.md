@@ -29,7 +29,9 @@ Ensure your CORS policy is set to allow requests from your Obsidian instance. In
 ```yaml
     obsidiancors:
       headers:
-        accessControlAllowHeaders: "*"
+        accessControlAllowHeaders: "Authorization, Content-Type, Origin"
+        accessControlAllowMethods: "GET, PATCH, POST, PUT, DELETE, OPTIONS"
+        accessControlAllowCredentials: "true"
         accessControlAllowOriginList:
           - app://obsidian.md
           - capacitor://localhost
