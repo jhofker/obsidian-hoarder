@@ -1,57 +1,13 @@
-import { createHoarderClient } from "@karakeep/sdk";
 import { Events, Notice, Plugin, TFile } from "obsidian";
 
+import {
+  HoarderApiClient,
+  HoarderBookmark,
+  HoarderBookmarkContent,
+  HoarderTag,
+  PaginatedBookmarks,
+} from "./hoarder-client";
 import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings";
-
-// Type definitions based on the SDK structure
-interface HoarderTag {
-  id: string;
-  name: string;
-  attachedBy: "ai" | "human";
-}
-
-interface HoarderBookmarkContent {
-  type: "link" | "text" | "asset" | "unknown";
-  url?: string;
-  title?: string | null;
-  description?: string | null;
-  imageUrl?: string | null;
-  imageAssetId?: string | null;
-  screenshotAssetId?: string | null;
-  fullPageArchiveAssetId?: string | null;
-  videoAssetId?: string | null;
-  favicon?: string | null;
-  htmlContent?: string | null;
-  crawledAt?: string | null;
-  text?: string;
-  sourceUrl?: string | null;
-  assetType?: "image" | "pdf";
-  assetId?: string;
-  fileName?: string | null;
-}
-
-interface HoarderBookmark {
-  id: string;
-  createdAt: string;
-  modifiedAt: string | null;
-  title?: string | null;
-  archived: boolean;
-  favourited: boolean;
-  taggingStatus: "success" | "failure" | "pending" | null;
-  note?: string | null;
-  summary?: string | null;
-  tags: HoarderTag[];
-  content: HoarderBookmarkContent;
-  assets: Array<{
-    id: string;
-    assetType: string;
-  }>;
-}
-
-interface PaginatedBookmarks {
-  bookmarks: HoarderBookmark[];
-  nextCursor: string | null;
-}
 
 export default class HoarderPlugin extends Plugin {
   settings: HoarderSettings;
@@ -61,7 +17,7 @@ export default class HoarderPlugin extends Plugin {
   events: Events = new Events();
   private modificationTimeout: number | null = null;
   private lastSyncedNotes: string | null = null;
-  private client: ReturnType<typeof createHoarderClient> | null = null;
+  private client: HoarderApiClient | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -153,22 +109,12 @@ export default class HoarderPlugin extends Plugin {
       throw new Error("Client not initialized");
     }
 
-    const { data, error } = await this.client.GET("/bookmarks", {
-      params: {
-        query: {
-          limit,
-          cursor: cursor || undefined,
-          archived: this.settings.excludeArchived ? false : undefined,
-          favourited: this.settings.onlyFavorites ? true : undefined,
-        },
-      },
+    return await this.client.getBookmarks({
+      limit,
+      cursor: cursor || undefined,
+      archived: this.settings.excludeArchived ? false : undefined,
+      favourited: this.settings.onlyFavorites ? true : undefined,
     });
-
-    if (error) {
-      throw new Error(`API error: ${error}`);
-    }
-
-    return data;
   }
 
   async fetchAllBookmarks(includeArchived: boolean = false): Promise<HoarderBookmark[]> {
@@ -180,20 +126,12 @@ export default class HoarderPlugin extends Plugin {
     let cursor: string | undefined;
 
     do {
-      const { data, error } = await this.client.GET("/bookmarks", {
-        params: {
-          query: {
-            limit: 100,
-            cursor: cursor || undefined,
-            archived: includeArchived ? undefined : false,
-            favourited: this.settings.onlyFavorites ? true : undefined,
-          },
-        },
+      const data = await this.client.getBookmarks({
+        limit: 100,
+        cursor: cursor || undefined,
+        archived: includeArchived ? undefined : false,
+        favourited: this.settings.onlyFavorites ? true : undefined,
       });
-
-      if (error) {
-        throw new Error(`API error: ${error}`);
-      }
 
       allBookmarks.push(...(data.bookmarks || []));
       cursor = data.nextCursor || undefined;
@@ -292,21 +230,7 @@ export default class HoarderPlugin extends Plugin {
         throw new Error("Client not initialized");
       }
 
-      const { error } = await this.client.PATCH("/bookmarks/{bookmarkId}", {
-        params: {
-          path: {
-            bookmarkId,
-          },
-        },
-        body: {
-          note,
-        },
-      });
-
-      if (error) {
-        throw new Error(`API error: ${error}`);
-      }
-
+      await this.client.updateBookmark(bookmarkId, { note });
       return true;
     } catch (error) {
       console.error("Error updating bookmark in Hoarder:", error);
@@ -768,22 +692,30 @@ export default class HoarderPlugin extends Plugin {
       }
 
       // Download the image
-      const headers: Record<string, string> = {};
+      let buffer: ArrayBuffer;
+
       // Check if this is a Hoarder asset URL by checking if it's from the same domain
       const apiDomain = new URL(this.settings.apiEndpoint).origin;
-      if (url.startsWith(apiDomain)) {
-        headers["Authorization"] = `Bearer ${this.settings.apiKey}`;
+      if (url.startsWith(apiDomain) && this.client) {
+        // Use the client's downloadAsset method for Hoarder assets
+        buffer = await this.client.downloadAsset(assetId);
+      } else {
+        // Use fetch for external URLs
+        const headers: Record<string, string> = {};
+        if (url.startsWith(apiDomain)) {
+          headers["Authorization"] = `Bearer ${this.settings.apiKey}`;
+        }
+
+        const response = await fetch(url, { headers });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        buffer = await response.arrayBuffer();
       }
-
-      const response = await fetch(url, { headers });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-      const buffer = await response.arrayBuffer();
       await this.app.vault.adapter.writeBinary(filePath, buffer);
 
       return filePath;
     } catch (error) {
-      console.error("Error downloading image:", error);
+      console.error("Error downloading image:", url, error);
       return null;
     }
   }
@@ -797,7 +729,10 @@ export default class HoarderPlugin extends Plugin {
 
     // Helper function to get asset URL
     const getAssetUrl = (assetId: string): string => {
-      // Remove /v1 and any trailing slashes from the API endpoint
+      if (this.client) {
+        return this.client.getAssetUrl(assetId);
+      }
+      // Fallback if client is not initialized
       const baseUrl = this.settings.apiEndpoint.replace(/\/v1\/?$/, "");
       return `${baseUrl}/assets/${assetId}`;
     };
@@ -961,12 +896,10 @@ summary: ${escapeYaml(bookmark.summary)}
       return;
     }
 
-    this.client = createHoarderClient({
-      baseUrl: `${this.settings.apiEndpoint}/`,
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${this.settings.apiKey}`,
-      },
-    });
+    this.client = new HoarderApiClient(
+      this.settings.apiEndpoint,
+      this.settings.apiKey,
+      this.settings.useObsidianRequest
+    );
   }
 }

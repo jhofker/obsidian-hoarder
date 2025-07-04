@@ -31,7 +31,5 @@
     "tslib": "^2",
     "typescript": "^5"
   },
-  "dependencies": {
-    "@karakeep/sdk": "^0.23"
-  }
+  "dependencies": {}
 }

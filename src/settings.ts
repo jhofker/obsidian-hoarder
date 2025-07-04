@@ -24,6 +24,7 @@ export interface HoarderSettings {
   archivedBookmarkAction: "delete" | "archive" | "tag" | "ignore";
   archivedBookmarkTag: string;
   archivedBookmarkFolder: string;
+  useObsidianRequest: boolean;
 }
 
 export const DEFAULT_SETTINGS: HoarderSettings = {
@@ -48,6 +49,7 @@ export const DEFAULT_SETTINGS: HoarderSettings = {
   archivedBookmarkAction: "delete",
   archivedBookmarkTag: "archived",
   archivedBookmarkFolder: "Hoarder/archived",
+  useObsidianRequest: false,
 };
 
 class FolderSuggest extends AbstractInputSuggest<TFolder> {
@@ -127,7 +129,7 @@ export class HoarderSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Api endpoint")
-      .setDesc("Hoarder API endpoint URL (default: https://api.karakeep.app/api/v1)")
+      .setDesc("Hoarder API endpoint URL (default: https://api.hoarder.app/api/v1)")
       .addText((text) =>
         text
           .setPlaceholder("Enter API endpoint")
@@ -137,6 +139,18 @@ export class HoarderSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
           .inputEl.addClass("hoarder-wide-input")
+      );
+
+    new Setting(containerEl)
+      .setName("Bypass CORS")
+      .setDesc(
+        "Use Obsidian's internal request method to avoid CORS issues. Enable this if you're experiencing connection problems."
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.useObsidianRequest).onChange(async (value) => {
+          this.plugin.settings.useObsidianRequest = value;
+          await this.plugin.saveSettings();
+        })
       );
 
     new Setting(containerEl)
