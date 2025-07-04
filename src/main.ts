@@ -737,6 +737,15 @@ export default class HoarderPlugin extends Plugin {
       return `${baseUrl}/assets/${assetId}`;
     };
 
+    // Helper function to escape paths for markdown (handles spaces)
+    const escapeMarkdownPath = (path: string): string => {
+      // If path contains spaces or other special characters, wrap in angle brackets
+      if (path.includes(" ") || /[<>[\](){}]/.test(path)) {
+        return `<${path}>`;
+      }
+      return path;
+    };
+
     // Helper function to escape YAML values
     const escapeYaml = (str: string | null | undefined): string => {
       if (!str) return "";
@@ -787,13 +796,13 @@ summary: ${escapeYaml(bookmark.summary)}
         if (this.settings.downloadAssets) {
           const imagePath = await this.downloadImage(assetUrl, bookmark.content.assetId, title);
           if (imagePath) {
-            content += `\n![${title}](${imagePath})\n`;
+            content += `\n![${title}](${escapeMarkdownPath(imagePath)})\n`;
           }
         } else {
-          content += `\n![${title}](${assetUrl})\n`;
+          content += `\n![${title}](${escapeMarkdownPath(assetUrl)})\n`;
         }
       } else if (bookmark.content.sourceUrl) {
-        content += `\n![${title}](${bookmark.content.sourceUrl})\n`;
+        content += `\n![${title}](${escapeMarkdownPath(bookmark.content.sourceUrl)})\n`;
       }
     } else if (bookmark.content.type === "link") {
       // For link types, handle Hoarder-hosted images and external images
@@ -806,13 +815,13 @@ summary: ${escapeYaml(bookmark.summary)}
             title
           );
           if (imagePath) {
-            content += `\n![${title}](${imagePath})\n`;
+            content += `\n![${title}](${escapeMarkdownPath(imagePath)})\n`;
           }
         } else {
-          content += `\n![${title}](${assetUrl})\n`;
+          content += `\n![${title}](${escapeMarkdownPath(assetUrl)})\n`;
         }
       } else if (bookmark.content.imageUrl) {
-        content += `\n![${title}](${bookmark.content.imageUrl})\n`;
+        content += `\n![${title}](${escapeMarkdownPath(bookmark.content.imageUrl)})\n`;
       }
     }
 
@@ -831,9 +840,10 @@ summary: ${escapeYaml(bookmark.summary)}
 
     // Add link if available (and it's not just an image)
     if (url && bookmark.content.type !== "asset") {
-      content += `\n[Visit Link](${url})\n`;
+      content += `\n[Visit Link](${escapeMarkdownPath(url)})\n`;
     }
-    content += `\n[View in Hoarder](${this.settings.apiEndpoint.replace("/api/v1", "/dashboard/preview")}/${bookmark.id})`;
+    const hoarderUrl = `${this.settings.apiEndpoint.replace("/api/v1", "/dashboard/preview")}/${bookmark.id}`;
+    content += `\n[View in Hoarder](${escapeMarkdownPath(hoarderUrl)})`;
 
     return content;
   }
