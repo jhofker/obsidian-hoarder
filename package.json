@@ -1,6 +1,6 @@
 {
   "name": "obsidian-hoarder",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Sync your Hoarder bookmarks with Obsidian",
   "main": "dist/main.js",
   "scripts": {
