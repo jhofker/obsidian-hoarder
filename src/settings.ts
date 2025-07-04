@@ -113,6 +113,15 @@ export class HoarderSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
+    // =================
+    // API Configuration
+    // =================
+    containerEl.createEl("h3", { text: "API Configuration" });
+    containerEl.createEl("div", {
+      text: "Connection settings for your Karakeep instance",
+      cls: "setting-item-description",
+    });
+
     new Setting(containerEl)
       .setName("Api key")
       .setDesc("Your Hoarder API key")
@@ -129,7 +138,7 @@ export class HoarderSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Api endpoint")
-      .setDesc("Hoarder API endpoint URL (default: https://api.hoarder.app/api/v1)")
+      .setDesc("Hoarder API endpoint URL (default: https://api.karakeep.app/api/v1)")
       .addText((text) =>
         text
           .setPlaceholder("Enter API endpoint")
@@ -152,6 +161,15 @@ export class HoarderSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         })
       );
+
+    // =================
+    // File Organization
+    // =================
+    containerEl.createEl("h3", { text: "File Organization" });
+    containerEl.createEl("div", {
+      text: "Configure where your bookmarks and assets are stored",
+      cls: "setting-item-description",
+    });
 
     new Setting(containerEl)
       .setName("Sync folder")
@@ -187,6 +205,15 @@ export class HoarderSettingTab extends PluginSettingTab {
         return text;
       });
 
+    // =================
+    // Sync Behavior
+    // =================
+    containerEl.createEl("h3", { text: "Sync Behavior" });
+    containerEl.createEl("div", {
+      text: "Control how synchronization works",
+      cls: "setting-item-description",
+    });
+
     new Setting(containerEl)
       .setName("Sync interval")
       .setDesc("How often to sync (in minutes)")
@@ -216,6 +243,37 @@ export class HoarderSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Sync notes to Karakeep")
+      .setDesc("Whether to sync notes to Karakeep")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.syncNotesToHoarder).onChange(async (value) => {
+          this.plugin.settings.syncNotesToHoarder = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Download assets")
+      .setDesc(
+        "Download images and other assets locally (if disabled, assets will be embedded using their source URLs)"
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.downloadAssets).onChange(async (value) => {
+          this.plugin.settings.downloadAssets = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    // =================
+    // Sync Filtering
+    // =================
+    containerEl.createEl("h3", { text: "Sync Filtering" });
+    containerEl.createEl("div", {
+      text: "Control which bookmarks are synchronized",
+      cls: "setting-item-description",
+    });
+
+    new Setting(containerEl)
       .setName("Exclude archived")
       .setDesc("Exclude archived bookmarks from sync")
       .addToggle((toggle) =>
@@ -231,16 +289,6 @@ export class HoarderSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.onlyFavorites).onChange(async (value) => {
           this.plugin.settings.onlyFavorites = value;
-          await this.plugin.saveSettings();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Sync notes to Hoarder")
-      .setDesc("Whether to sync notes to Hoarder")
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.syncNotesToHoarder).onChange(async (value) => {
-          this.plugin.settings.syncNotesToHoarder = value;
           await this.plugin.saveSettings();
         })
       );
@@ -281,19 +329,15 @@ export class HoarderSettingTab extends PluginSettingTab {
           .inputEl.addClass("hoarder-wide-input")
       );
 
-    new Setting(containerEl)
-      .setName("Download assets")
-      .setDesc(
-        "Download images and other assets locally (if disabled, assets will be embedded using their source URLs)"
-      )
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.downloadAssets).onChange(async (value) => {
-          this.plugin.settings.downloadAssets = value;
-          await this.plugin.saveSettings();
-        })
-      );
+    // =================
+    // Deletion Handling
+    // =================
+    containerEl.createEl("h3", { text: "Deletion Handling" });
+    containerEl.createEl("div", {
+      text: "Configure what happens when bookmarks are deleted in Karakeep",
+      cls: "setting-item-description",
+    });
 
-    // New settings for deletion/archiving sync
     const syncDeletionsToggle = new Setting(containerEl)
       .setName("Sync deletions")
       .setDesc("Automatically handle bookmarks that are deleted in Karakeep")
@@ -358,7 +402,15 @@ export class HoarderSettingTab extends PluginSettingTab {
       }
     }
 
-    // New settings for archived bookmarks
+    // =================
+    // Archive Handling
+    // =================
+    containerEl.createEl("h3", { text: "Archive Handling" });
+    containerEl.createEl("div", {
+      text: "Configure what happens when bookmarks are archived in Karakeep",
+      cls: "setting-item-description",
+    });
+
     const handleArchivedToggle = new Setting(containerEl)
       .setName("Handle archived bookmarks")
       .setDesc("Separately handle bookmarks that are archived (not deleted) in Karakeep")
@@ -423,6 +475,15 @@ export class HoarderSettingTab extends PluginSettingTab {
           );
       }
     }
+
+    // =================
+    // Manual Actions & Status
+    // =================
+    containerEl.createEl("h3", { text: "Manual Actions & Status" });
+    containerEl.createEl("div", {
+      text: "Manual sync controls and synchronization status",
+      cls: "setting-item-description",
+    });
 
     // Add Sync Now button
     new Setting(containerEl)

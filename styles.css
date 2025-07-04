@@ -1,23 +1,23 @@
 .hoarder-wide-input {
-  width: 300px;
+  width: var(--size-4-100);
 }
 
 .hoarder-medium-input {
-  width: 200px;
+  width: var(--size-4-75);
 }
 
 .hoarder-small-input {
-  width: 100px;
+  width: var(--size-4-50);
 }
 
 .hoarder-suggestion-dropdown {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  max-height: 200px;
+  border-radius: var(--size-4-1);
+  box-shadow: 0 var(--size-2-1) var(--size-4-2) rgba(0, 0, 0, 0.1);
+  max-height: var(--size-4-50);
   overflow-y: auto;
-  width: 200px;
+  width: var(--size-4-50);
   position: absolute;
   z-index: 1000;
   display: block;
@@ -31,11 +31,15 @@
 }
 
 .hoarder-suggestion-item {
-  padding: 8px 12px;
-  cursor: pointer;
+  padding: var(--size-4-2) var(--size-4-3);
+  cursor: var(--cursor);
   transition: background-color 100ms ease-in-out;
 }
 
 .hoarder-suggestion-item:hover {
   background: var(--background-modifier-hover);
-} 
+}
+
+.setting-item-description {
+  margin-bottom: var(--size-4-4);
+}
