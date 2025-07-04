@@ -1,12 +1,7 @@
 import { Events, Notice, Plugin, TFile } from "obsidian";
 
-import {
-  HoarderApiClient,
-  HoarderBookmark,
-  HoarderBookmarkContent,
-  HoarderTag,
-  PaginatedBookmarks,
-} from "./hoarder-client";
+import { processBookmarkAssets } from "./asset-handler";
+import { HoarderApiClient, HoarderBookmark, PaginatedBookmarks } from "./hoarder-client";
 import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings";
 
 export default class HoarderPlugin extends Plugin {
@@ -637,105 +632,12 @@ export default class HoarderPlugin extends Plugin {
     return `${dateStr}-${sanitizedTitle}`;
   }
 
-  sanitizeAssetFileName(title: string): string {
-    // Sanitize the title
-    let sanitizedTitle = title
-      .replace(/[\\/:*?"<>|]/g, "-") // Replace invalid characters with dash
-      .replace(/\s+/g, "-") // Replace spaces with dash
-      .replace(/-+/g, "-") // Replace multiple dashes with single dash
-      .replace(/^-|-$/g, ""); // Remove dashes from start and end
-
-    // Use a shorter max length for asset filenames
-    const maxTitleLength = 30;
-
-    if (sanitizedTitle.length > maxTitleLength) {
-      // If title is too long, try to cut at a word boundary
-      const truncated = sanitizedTitle.substring(0, maxTitleLength);
-      const lastDash = truncated.lastIndexOf("-");
-      if (lastDash > maxTitleLength / 2) {
-        // If we can find a reasonable word break, use it
-        sanitizedTitle = truncated.substring(0, lastDash);
-      } else {
-        // Otherwise just truncate
-        sanitizedTitle = truncated;
-      }
-    }
-
-    return sanitizedTitle;
-  }
-
-  async downloadImage(url: string, assetId: string, title: string): Promise<string | null> {
-    try {
-      // Create attachments folder if it doesn't exist
-      if (!(await this.app.vault.adapter.exists(this.settings.attachmentsFolder))) {
-        await this.app.vault.createFolder(this.settings.attachmentsFolder);
-      }
-
-      // Get file extension from URL or default to jpg
-      const extension = url.split(".").pop()?.toLowerCase() || "jpg";
-      const safeExtension = ["jpg", "jpeg", "png", "gif", "webp"].includes(extension)
-        ? extension
-        : "jpg";
-
-      // Create a safe filename using just the assetId and a short title
-      const safeTitle = this.sanitizeAssetFileName(title);
-      const fileName = `${assetId}${safeTitle ? "-" + safeTitle : ""}.${safeExtension}`;
-      const filePath = `${this.settings.attachmentsFolder}/${fileName}`;
-
-      // Check if file already exists with any extension
-      const files = await this.app.vault.adapter.list(this.settings.attachmentsFolder);
-      const existingFile = files.files.find((file) =>
-        file.startsWith(`${this.settings.attachmentsFolder}/${assetId}`)
-      );
-      if (existingFile) {
-        return existingFile;
-      }
-
-      // Download the image
-      let buffer: ArrayBuffer;
-
-      // Check if this is a Hoarder asset URL by checking if it's from the same domain
-      const apiDomain = new URL(this.settings.apiEndpoint).origin;
-      if (url.startsWith(apiDomain) && this.client) {
-        // Use the client's downloadAsset method for Hoarder assets
-        buffer = await this.client.downloadAsset(assetId);
-      } else {
-        // Use fetch for external URLs
-        const headers: Record<string, string> = {};
-        if (url.startsWith(apiDomain)) {
-          headers["Authorization"] = `Bearer ${this.settings.apiKey}`;
-        }
-
-        const response = await fetch(url, { headers });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-        buffer = await response.arrayBuffer();
-      }
-      await this.app.vault.adapter.writeBinary(filePath, buffer);
-
-      return filePath;
-    } catch (error) {
-      console.error("Error downloading image:", url, error);
-      return null;
-    }
-  }
-
   async formatBookmarkAsMarkdown(bookmark: HoarderBookmark, title: string): Promise<string> {
     const url =
       bookmark.content.type === "link" ? bookmark.content.url : bookmark.content.sourceUrl;
     const description =
       bookmark.content.type === "link" ? bookmark.content.description : bookmark.content.text;
     const tags = bookmark.tags.map((tag) => tag.name);
-
-    // Helper function to get asset URL
-    const getAssetUrl = (assetId: string): string => {
-      if (this.client) {
-        return this.client.getAssetUrl(assetId);
-      }
-      // Fallback if client is not initialized
-      const baseUrl = this.settings.apiEndpoint.replace(/\/v1\/?$/, "");
-      return `${baseUrl}/assets/${assetId}`;
-    };
 
     // Helper function to escape paths for markdown (handles spaces)
     const escapeMarkdownPath = (path: string): string => {
@@ -789,41 +691,15 @@ summary: ${escapeYaml(bookmark.summary)}
 # ${title}
 `;
 
-    // Handle images
-    if (bookmark.content.type === "asset" && bookmark.content.assetType === "image") {
-      if (bookmark.content.assetId) {
-        const assetUrl = getAssetUrl(bookmark.content.assetId);
-        if (this.settings.downloadAssets) {
-          const imagePath = await this.downloadImage(assetUrl, bookmark.content.assetId, title);
-          if (imagePath) {
-            content += `\n![${title}](${escapeMarkdownPath(imagePath)})\n`;
-          }
-        } else {
-          content += `\n![${title}](${escapeMarkdownPath(assetUrl)})\n`;
-        }
-      } else if (bookmark.content.sourceUrl) {
-        content += `\n![${title}](${escapeMarkdownPath(bookmark.content.sourceUrl)})\n`;
-      }
-    } else if (bookmark.content.type === "link") {
-      // For link types, handle Hoarder-hosted images and external images
-      if (bookmark.content.imageAssetId) {
-        const assetUrl = getAssetUrl(bookmark.content.imageAssetId);
-        if (this.settings.downloadAssets) {
-          const imagePath = await this.downloadImage(
-            assetUrl,
-            bookmark.content.imageAssetId,
-            title
-          );
-          if (imagePath) {
-            content += `\n![${title}](${escapeMarkdownPath(imagePath)})\n`;
-          }
-        } else {
-          content += `\n![${title}](${escapeMarkdownPath(assetUrl)})\n`;
-        }
-      } else if (bookmark.content.imageUrl) {
-        content += `\n![${title}](${escapeMarkdownPath(bookmark.content.imageUrl)})\n`;
-      }
-    }
+    // Handle images and assets
+    const assetContent = await processBookmarkAssets(
+      this.app,
+      bookmark,
+      title,
+      this.client,
+      this.settings
+    );
+    content += assetContent;
 
     // Add summary if available
     if (bookmark.summary) {
@@ -903,13 +779,12 @@ summary: ${escapeYaml(bookmark.summary)}
   private initializeClient() {
     if (!this.settings.apiKey || !this.settings.apiEndpoint) {
       this.client = null;
-      return;
+    } else {
+      this.client = new HoarderApiClient(
+        this.settings.apiEndpoint,
+        this.settings.apiKey,
+        this.settings.useObsidianRequest
+      );
     }
-
-    this.client = new HoarderApiClient(
-      this.settings.apiEndpoint,
-      this.settings.apiKey,
-      this.settings.useObsidianRequest
-    );
   }
 }
