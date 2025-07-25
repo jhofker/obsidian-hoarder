@@ -7,6 +7,18 @@ export interface HoarderTag {
   attachedBy: "ai" | "human";
 }
 
+export interface HoarderHighlight {
+  id: string;
+  bookmarkId: string;
+  startOffset: number;
+  endOffset: number;
+  color: "yellow" | "red" | "green" | "blue";
+  text: string;
+  note: string;
+  userId: string;
+  createdAt: string;
+}
+
 export interface HoarderBookmarkContent {
   type: "link" | "text" | "asset" | "unknown";
   url?: string;
@@ -47,6 +59,11 @@ export interface HoarderBookmark {
 
 export interface PaginatedBookmarks {
   bookmarks: HoarderBookmark[];
+  nextCursor: string | null;
+}
+
+export interface PaginatedHighlights {
+  highlights: HoarderHighlight[];
   nextCursor: string | null;
 }
 
@@ -135,6 +152,34 @@ export class HoarderApiClient {
     data: { note?: string; [key: string]: any }
   ): Promise<HoarderBookmark> {
     return this.makeRequest<HoarderBookmark>(`/bookmarks/${bookmarkId}`, "PATCH", data);
+  }
+
+  async getBookmarkHighlights(bookmarkId: string): Promise<{ highlights: HoarderHighlight[] }> {
+    return this.makeRequest<{ highlights: HoarderHighlight[] }>(
+      `/bookmarks/${bookmarkId}/highlights`,
+      "GET"
+    );
+  }
+
+  async getHighlights(params?: { limit?: number; cursor?: string }): Promise<PaginatedHighlights> {
+    return this.makeRequest<PaginatedHighlights>("/highlights", "GET", undefined, params);
+  }
+
+  async getAllHighlights(): Promise<HoarderHighlight[]> {
+    const allHighlights: HoarderHighlight[] = [];
+    let cursor: string | undefined;
+
+    do {
+      const data = await this.getHighlights({
+        limit: 100,
+        cursor: cursor || undefined,
+      });
+
+      allHighlights.push(...(data.highlights || []));
+      cursor = data.nextCursor || undefined;
+    } while (cursor);
+
+    return allHighlights;
   }
 
   async downloadAsset(assetId: string): Promise<ArrayBuffer> {
