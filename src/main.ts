@@ -768,9 +768,9 @@ summary: ${escapeYaml(bookmark.summary)}
         });
 
         content += `> [!karakeep-${highlight.color}] ${date}\n`;
-        
+
         // Handle multi-line highlight text by prefixing each line with '> '
-        const highlightLines = highlight.text.split('\n');
+        const highlightLines = highlight.text.split("\n");
         for (const line of highlightLines) {
           content += `> ${line}\n`;
         }
@@ -778,7 +778,7 @@ summary: ${escapeYaml(bookmark.summary)}
         if (highlight.note && highlight.note.trim()) {
           content += `>\n`;
           // Handle multi-line notes by prefixing each line with '> '
-          const noteLines = highlight.note.split('\n');
+          const noteLines = highlight.note.split("\n");
           for (let i = 0; i < noteLines.length; i++) {
             if (i === 0) {
               content += `> *Note: ${noteLines[i]}*\n`;
