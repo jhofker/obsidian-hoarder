@@ -514,47 +514,45 @@ export default class HoarderPlugin extends Plugin {
                 hasNewHighlights = !storedModifiedTime || newestHighlightTime > storedModifiedTime;
               }
 
-              // Only update if:
-              // 1. updateExistingFiles is true OR
-              // 2. No modified timestamp in frontmatter (old file) OR
-              // 3. Bookmark has been modified since our last sync OR
-              // 4. Notes have changed from their original version OR
-              // 5. There are new highlights since last file update
-              if (
-                this.settings.updateExistingFiles ||
-                !storedModifiedTime ||
-                bookmarkModifiedTime > storedModifiedTime ||
-                (this.settings.syncNotesToHoarder && metadata?.original_note !== bookmark.note) ||
-                hasNewHighlights
-              ) {
-                // Check for local changes to notes if bi-directional sync is enabled
-                if (this.settings.syncNotesToHoarder) {
-                  const { currentNotes, originalNotes } = await this.extractNotesFromFile(fileName);
-                  const remoteNotes = bookmark.note || "";
+              // Check if we should update existing files based on user setting
+              if (!this.settings.updateExistingFiles) {
+                // User has disabled updates to existing files
+                this.skippedFiles++;
+                continue;
+              }
 
-                  // Only update if notes have changed from their original version
-                  if (
-                    currentNotes !== null &&
-                    originalNotes !== null &&
-                    currentNotes !== originalNotes &&
-                    currentNotes !== remoteNotes
-                  ) {
-                    // Local notes have changed from original, update in Hoarder
-                    const updated = await this.updateBookmarkInHoarder(bookmark.id, currentNotes);
-                    if (updated) {
-                      updatedInHoarder++;
-                      bookmark.note = currentNotes; // Update the bookmark object with local notes
-                    }
+              // Check for local changes to notes if bi-directional sync is enabled
+              if (this.settings.syncNotesToHoarder) {
+                const { currentNotes, originalNotes } = await this.extractNotesFromFile(fileName);
+                const remoteNotes = bookmark.note || "";
+
+                // Only update if notes have changed from their original version
+                if (
+                  currentNotes !== null &&
+                  originalNotes !== null &&
+                  currentNotes !== originalNotes &&
+                  currentNotes !== remoteNotes
+                ) {
+                  // Local notes have changed from original, update in Hoarder
+                  const updated = await this.updateBookmarkInHoarder(bookmark.id, currentNotes);
+                  if (updated) {
+                    updatedInHoarder++;
+                    bookmark.note = currentNotes; // Update the bookmark object with local notes
                   }
                 }
+              }
 
-                if (this.settings.updateExistingFiles) {
-                  const content = await this.formatBookmarkAsMarkdown(bookmark, title, highlights);
-                  await this.app.vault.adapter.write(fileName, content);
-                  totalBookmarks++;
-                } else {
-                  this.skippedFiles++;
-                }
+              // Generate new content and compare with existing
+              const newContent = await this.formatBookmarkAsMarkdown(bookmark, title, highlights);
+              const existingContent = await this.app.vault.adapter.read(fileName);
+              
+              if (existingContent !== newContent) {
+                // Content has actually changed, update the file
+                await this.app.vault.adapter.write(fileName, newContent);
+                totalBookmarks++;
+              } else {
+                // Content is identical, skip writing to preserve modification time
+                this.skippedFiles++;
               }
             }
           } else {

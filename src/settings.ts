@@ -236,7 +236,7 @@ export class HoarderSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Update existing files")
-      .setDesc("Whether to update or skip existing bookmark files")
+      .setDesc("Whether to update existing bookmark files when remote data changes. When disabled, only new bookmarks will be created.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.updateExistingFiles).onChange(async (value) => {
           this.plugin.settings.updateExistingFiles = value;
