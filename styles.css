@@ -43,3 +43,33 @@
 .setting-item-description {
   margin-bottom: var(--size-4-4);
 }
+
+/* Karakeep Highlight Callouts */
+.callout[data-callout="karakeep-yellow"] {
+  --callout-color: 254, 240, 138;
+  --callout-icon: lucide-highlighter;
+}
+
+.callout[data-callout="karakeep-red"] {
+  --callout-color: 254, 202, 202;
+  --callout-icon: lucide-highlighter;
+}
+
+.callout[data-callout="karakeep-green"] {
+  --callout-color: 187, 247, 208;
+  --callout-icon: lucide-highlighter;
+}
+
+.callout[data-callout="karakeep-blue"] {
+  --callout-color: 191, 219, 254;
+  --callout-icon: lucide-highlighter;
+}
+
+/* Optional: Make highlight callouts slightly more compact */
+.callout[data-callout^="karakeep-"] {
+  margin: var(--size-4-2) 0;
+}
+
+.callout[data-callout^="karakeep-"] .callout-content {
+  padding: var(--size-4-2) var(--size-4-3);
+}
