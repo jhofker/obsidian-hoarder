@@ -1,7 +1,12 @@
 import { Events, Notice, Plugin, TFile } from "obsidian";
 
 import { processBookmarkAssets } from "./asset-handler";
-import { HoarderApiClient, HoarderBookmark, PaginatedBookmarks } from "./hoarder-client";
+import {
+  HoarderApiClient,
+  HoarderBookmark,
+  HoarderHighlight,
+  PaginatedBookmarks,
+} from "./hoarder-client";
 import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings";
 
 export default class HoarderPlugin extends Plugin {
@@ -425,6 +430,25 @@ export default class HoarderPlugin extends Plugin {
         allBookmarks.filter((b) => b.archived && !activeBookmarkIds.has(b.id)).map((b) => b.id)
       );
 
+      // Fetch all highlights in bulk if enabled
+      let highlightsByBookmarkId = new Map<string, HoarderHighlight[]>();
+      if (this.settings.syncHighlights && this.client) {
+        try {
+          const allHighlights = await this.client.getAllHighlights();
+
+          // Group highlights by bookmark ID
+          for (const highlight of allHighlights) {
+            if (!highlightsByBookmarkId.has(highlight.bookmarkId)) {
+              highlightsByBookmarkId.set(highlight.bookmarkId, []);
+            }
+            highlightsByBookmarkId.get(highlight.bookmarkId)!.push(highlight);
+          }
+        } catch (error) {
+          console.error("Error fetching highlights in bulk:", error);
+          // Continue without highlights rather than failing the entire sync
+        }
+      }
+
       let cursor: string | undefined;
 
       do {
@@ -464,6 +488,9 @@ export default class HoarderPlugin extends Plugin {
           const title = this.getBookmarkTitle(bookmark);
           const fileName = `${folderPath}/${this.sanitizeFileName(title, bookmark.createdAt)}.md`;
 
+          // Get highlights for this bookmark from pre-fetched map
+          const highlights = highlightsByBookmarkId.get(bookmark.id) || [];
+
           const fileExists = await this.app.vault.adapter.exists(fileName);
 
           if (fileExists) {
@@ -478,16 +505,27 @@ export default class HoarderPlugin extends Plugin {
                 ? new Date(bookmark.modifiedAt).getTime()
                 : new Date(bookmark.createdAt).getTime();
 
+              // Check if there are new highlights since last file update
+              let hasNewHighlights = false;
+              if (this.settings.syncHighlights && highlights.length > 0) {
+                const newestHighlightTime = Math.max(
+                  ...highlights.map((h) => new Date(h.createdAt).getTime())
+                );
+                hasNewHighlights = !storedModifiedTime || newestHighlightTime > storedModifiedTime;
+              }
+
               // Only update if:
               // 1. updateExistingFiles is true OR
               // 2. No modified timestamp in frontmatter (old file) OR
               // 3. Bookmark has been modified since our last sync OR
-              // 4. Notes have changed from their original version
+              // 4. Notes have changed from their original version OR
+              // 5. There are new highlights since last file update
               if (
                 this.settings.updateExistingFiles ||
                 !storedModifiedTime ||
                 bookmarkModifiedTime > storedModifiedTime ||
-                (this.settings.syncNotesToHoarder && metadata?.original_note !== bookmark.note)
+                (this.settings.syncNotesToHoarder && metadata?.original_note !== bookmark.note) ||
+                hasNewHighlights
               ) {
                 // Check for local changes to notes if bi-directional sync is enabled
                 if (this.settings.syncNotesToHoarder) {
@@ -511,7 +549,7 @@ export default class HoarderPlugin extends Plugin {
                 }
 
                 if (this.settings.updateExistingFiles) {
-                  const content = await this.formatBookmarkAsMarkdown(bookmark, title);
+                  const content = await this.formatBookmarkAsMarkdown(bookmark, title, highlights);
                   await this.app.vault.adapter.write(fileName, content);
                   totalBookmarks++;
                 } else {
@@ -520,7 +558,7 @@ export default class HoarderPlugin extends Plugin {
               }
             }
           } else {
-            const content = await this.formatBookmarkAsMarkdown(bookmark, title);
+            const content = await this.formatBookmarkAsMarkdown(bookmark, title, highlights);
             await this.app.vault.create(fileName, content);
             totalBookmarks++;
           }
@@ -632,7 +670,11 @@ export default class HoarderPlugin extends Plugin {
     return `${dateStr}-${sanitizedTitle}`;
   }
 
-  async formatBookmarkAsMarkdown(bookmark: HoarderBookmark, title: string): Promise<string> {
+  async formatBookmarkAsMarkdown(
+    bookmark: HoarderBookmark,
+    title: string,
+    highlights?: HoarderHighlight[]
+  ): Promise<string> {
     const url =
       bookmark.content.type === "link" ? bookmark.content.url : bookmark.content.sourceUrl;
     const description =
@@ -709,6 +751,45 @@ summary: ${escapeYaml(bookmark.summary)}
     // Add description if available
     if (description) {
       content += `\n## Description\n\n${description}\n`;
+    }
+
+    // Add highlights if available and enabled
+    if (highlights && highlights.length > 0 && this.settings.syncHighlights) {
+      content += `\n## Highlights\n\n`;
+
+      // Sort highlights by startOffset (position in document)
+      const sortedHighlights = highlights.sort((a, b) => a.startOffset - b.startOffset);
+
+      for (const highlight of sortedHighlights) {
+        const date = new Date(highlight.createdAt).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        });
+
+        content += `> [!karakeep-${highlight.color}] ${date}\n`;
+        
+        // Handle multi-line highlight text by prefixing each line with '> '
+        const highlightLines = highlight.text.split('\n');
+        for (const line of highlightLines) {
+          content += `> ${line}\n`;
+        }
+
+        if (highlight.note && highlight.note.trim()) {
+          content += `>\n`;
+          // Handle multi-line notes by prefixing each line with '> '
+          const noteLines = highlight.note.split('\n');
+          for (let i = 0; i < noteLines.length; i++) {
+            if (i === 0) {
+              content += `> *Note: ${noteLines[i]}*\n`;
+            } else {
+              content += `> *${noteLines[i]}*\n`;
+            }
+          }
+        }
+
+        content += `\n`;
+      }
     }
 
     // Always add Notes section
