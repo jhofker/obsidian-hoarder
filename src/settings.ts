@@ -13,6 +13,7 @@ export interface HoarderSettings {
   excludeArchived: boolean;
   onlyFavorites: boolean;
   syncNotesToHoarder: boolean;
+  syncHighlights: boolean;
   excludedTags: string[];
   includedTags: string[];
   downloadAssets: boolean;
@@ -38,6 +39,7 @@ export const DEFAULT_SETTINGS: HoarderSettings = {
   excludeArchived: true,
   onlyFavorites: false,
   syncNotesToHoarder: true,
+  syncHighlights: true,
   excludedTags: [],
   includedTags: [],
   downloadAssets: true,
@@ -248,6 +250,16 @@ export class HoarderSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.syncNotesToHoarder).onChange(async (value) => {
           this.plugin.settings.syncNotesToHoarder = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Sync highlights")
+      .setDesc("Whether to sync highlights from Karakeep into bookmark files")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.syncHighlights).onChange(async (value) => {
+          this.plugin.settings.syncHighlights = value;
           await this.plugin.saveSettings();
         })
       );
