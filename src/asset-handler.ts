@@ -3,6 +3,15 @@ import { App } from "obsidian";
 import { HoarderApiClient, HoarderBookmark } from "./hoarder-client";
 import { HoarderSettings } from "./settings";
 
+export type AssetFrontmatter = {
+  image?: string; // wikilink [[path]]
+  banner?: string; // wikilink [[path]]
+  screenshot?: string; // wikilink [[path]]
+  full_page_archive?: string; // wikilink [[path]]
+  video?: string; // wikilink [[path]] (only if downloaded, typically omitted)
+  additional?: string[]; // array of wikilinks
+};
+
 function getAssetUrl(
   assetId: string,
   client: HoarderApiClient | null,
@@ -70,8 +79,8 @@ async function downloadImage(
 
     // Check if file already exists with any extension
     const files = await app.vault.adapter.list(settings.attachmentsFolder);
-    const existingFile = files.files.find((file) =>
-      file.startsWith(`${settings.attachmentsFolder}/${assetId}`)
+    const existingFile = files.files.find((filePathItem: string) =>
+      filePathItem.startsWith(`${settings.attachmentsFolder}/${assetId}`)
     );
     if (existingFile) {
       return existingFile;
@@ -108,11 +117,13 @@ async function downloadImage(
 
 function escapeMarkdownPath(path: string): string {
   // If path contains spaces or other special characters, wrap in angle brackets
-  if (path.includes(" ") || /[<>[\](){}]/.test(path)) {
+  if (path.includes(" ") || /[<>\[\](){}]/.test(path)) {
     return `<${path}>`;
   }
   return path;
 }
+
+const toWikilink = (path: string): string => `"[[${path}]]"`;
 
 export async function processBookmarkAssets(
   app: App,
@@ -120,15 +131,17 @@ export async function processBookmarkAssets(
   title: string,
   client: HoarderApiClient | null,
   settings: HoarderSettings
-): Promise<string> {
+): Promise<{ content: string; frontmatter: AssetFrontmatter | null }> {
   let content = "";
+  const fm: AssetFrontmatter = {};
 
   // Handle images for asset type bookmarks
   if (bookmark.content.type === "asset" && bookmark.content.assetType === "image") {
     if (bookmark.content.assetId) {
       const assetUrl = getAssetUrl(bookmark.content.assetId, client, settings);
+      let imagePath: string | null = null;
       if (settings.downloadAssets) {
-        const imagePath = await downloadImage(
+        imagePath = await downloadImage(
           app,
           assetUrl,
           bookmark.content.assetId,
@@ -136,19 +149,21 @@ export async function processBookmarkAssets(
           client,
           settings
         );
-        if (imagePath) {
-          content += `\n![${title}](${escapeMarkdownPath(imagePath)})\n`;
-        }
+      }
+      if (imagePath) {
+        content += `\n![${title}](${escapeMarkdownPath(imagePath)})\n`;
+        fm.image = toWikilink(imagePath);
       } else {
         content += `\n![${title}](${escapeMarkdownPath(assetUrl)})\n`;
       }
     } else if (bookmark.content.sourceUrl) {
       content += `\n![${title}](${escapeMarkdownPath(bookmark.content.sourceUrl)})\n`;
+      // No local path -> no wikilink in frontmatter
     }
   } else if (bookmark.content.type === "link") {
     // For link types, handle all available assets
-    const assetIds = [];
-    const assetLabels = [];
+    const assetIds: string[] = [];
+    const assetLabels: string[] = [];
 
     // Collect all asset IDs and their labels
     if (bookmark.content.imageAssetId) {
@@ -177,10 +192,12 @@ export async function processBookmarkAssets(
       // Handle videos differently - just embed as links, don't download
       if (label === "Video") {
         content += `\n[${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
+        // Not downloaded -> no wikilink in frontmatter
       } else {
         // Handle images normally
+        let imagePath: string | null = null;
         if (settings.downloadAssets) {
-          const imagePath = await downloadImage(
+          imagePath = await downloadImage(
             app,
             assetUrl,
             assetId,
@@ -188,8 +205,15 @@ export async function processBookmarkAssets(
             client,
             settings
           );
-          if (imagePath) {
-            content += `\n![${title} - ${label}](${escapeMarkdownPath(imagePath)})\n`;
+        }
+        if (imagePath) {
+          content += `\n![${title} - ${label}](${escapeMarkdownPath(imagePath)})\n`;
+          if (label === "Banner Image") {
+            fm.banner = toWikilink(imagePath);
+          } else if (label === "Screenshot") {
+            fm.screenshot = toWikilink(imagePath);
+          } else if (label === "Full Page Archive") {
+            fm.full_page_archive = toWikilink(imagePath);
           }
         } else {
           content += `\n![${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
@@ -200,12 +224,13 @@ export async function processBookmarkAssets(
     // Handle external image URL if no asset IDs but imageUrl exists
     if (assetIds.length === 0 && bookmark.content.imageUrl) {
       content += `\n![${title}](${escapeMarkdownPath(bookmark.content.imageUrl)})\n`;
+      // No local path -> no wikilink in frontmatter
     }
   }
 
   // Handle any additional assets from the bookmark.assets array
   if (bookmark.assets && bookmark.assets.length > 0) {
-    const processedAssetIds = new Set();
+    const processedAssetIds = new Set<string>();
 
     // Track which assets we've already processed from content fields
     if (bookmark.content.type === "asset" && bookmark.content.assetId) {
@@ -226,13 +251,13 @@ export async function processBookmarkAssets(
         const assetUrl = getAssetUrl(asset.id, client, settings);
         const label = asset.assetType === "image" ? "Additional Image" : asset.assetType;
 
-        // Handle videos differently - just embed as links, don't download
         if (asset.assetType === "video") {
           content += `\n[${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
+          // Not downloaded -> no wikilink in frontmatter
         } else {
-          // Handle images and other assets normally
+          let imagePath: string | null = null;
           if (settings.downloadAssets) {
-            const imagePath = await downloadImage(
+            imagePath = await downloadImage(
               app,
               assetUrl,
               asset.id,
@@ -240,9 +265,11 @@ export async function processBookmarkAssets(
               client,
               settings
             );
-            if (imagePath) {
-              content += `\n![${title} - ${label}](${escapeMarkdownPath(imagePath)})\n`;
-            }
+          }
+          if (imagePath) {
+            content += `\n![${title} - ${label}](${escapeMarkdownPath(imagePath)})\n`;
+            fm.additional = fm.additional || [];
+            fm.additional.push(toWikilink(imagePath));
           } else {
             content += `\n![${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
           }
@@ -251,5 +278,5 @@ export async function processBookmarkAssets(
     }
   }
 
-  return content;
+  return { content, frontmatter: Object.keys(fm).length > 0 ? fm : null };
 }

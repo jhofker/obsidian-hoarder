@@ -545,7 +545,7 @@ export default class HoarderPlugin extends Plugin {
               // Generate new content and compare with existing
               const newContent = await this.formatBookmarkAsMarkdown(bookmark, title, highlights);
               const existingContent = await this.app.vault.adapter.read(fileName);
-              
+
               if (existingContent !== newContent) {
                 // Content has actually changed, update the file
                 await this.app.vault.adapter.write(fileName, newContent);
@@ -688,7 +688,7 @@ export default class HoarderPlugin extends Plugin {
       return path;
     };
 
-    // Helper function to escape YAML values
+    // Helper function to escape YAML values for simple scalars
     const escapeYaml = (str: string | null | undefined): string => {
       if (!str) return "";
       // If string contains newlines or special characters, use block scalar
@@ -700,7 +700,7 @@ export default class HoarderPlugin extends Plugin {
         return `'${str}'`;
       }
       if (str.includes("'") || /^[ \t]|[ \t]$/.test(str)) {
-        return `"${str.replace(/"/g, '\\"')}"`;
+        return `"${str.replace(/\"/g, '\\\"')}"`;
       }
       return str;
     };
@@ -716,6 +716,34 @@ export default class HoarderPlugin extends Plugin {
       return `"${processedTag}"`;
     };
 
+    // Handle images and assets first to collect frontmatter entries
+    const { content: assetContent, frontmatter: assetsFm } = await processBookmarkAssets(
+      this.app,
+      bookmark,
+      title,
+      this.client,
+      this.settings
+    );
+
+    // Build top-level asset YAML entries (wikilinks only)
+    let assetsYaml = "";
+    if (assetsFm) {
+      const lines: string[] = [];
+      if (assetsFm.image) lines.push(`image: ${assetsFm.image}`);
+      if (assetsFm.banner) lines.push(`banner: ${assetsFm.banner}`);
+      if (assetsFm.screenshot) lines.push(`screenshot: ${assetsFm.screenshot}`);
+      if (assetsFm.full_page_archive)
+        lines.push(`full_page_archive: ${assetsFm.full_page_archive}`);
+      if (assetsFm.video) lines.push(`video: ${assetsFm.video}`);
+      if (assetsFm.additional && assetsFm.additional.length > 0) {
+        lines.push("additional:");
+        for (const link of assetsFm.additional) {
+          lines.push(`  - ${link}`);
+        }
+      }
+      assetsYaml = lines.join("\n") + "\n";
+    }
+
     let content = `---
 bookmark_id: "${bookmark.id}"
 url: ${escapeYaml(url)}
@@ -726,19 +754,13 @@ ${bookmark.modifiedAt ? `modified: ${new Date(bookmark.modifiedAt).toISOString()
 note: ${escapeYaml(bookmark.note)}
 original_note: ${escapeYaml(bookmark.note)}
 summary: ${escapeYaml(bookmark.summary)}
+${assetsYaml}
 ---
 
 # ${title}
 `;
 
-    // Handle images and assets
-    const assetContent = await processBookmarkAssets(
-      this.app,
-      bookmark,
-      title,
-      this.client,
-      this.settings
-    );
+    // Append any asset content (images/links embeds)
     content += assetContent;
 
     // Add summary if available
