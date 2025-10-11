@@ -14,6 +14,7 @@ export interface HoarderSettings {
   onlyFavorites: boolean;
   syncNotesToHoarder: boolean;
   syncHighlights: boolean;
+  onlyBookmarksWithHighlights: boolean;
   excludedTags: string[];
   includedTags: string[];
   downloadAssets: boolean;
@@ -40,6 +41,7 @@ export const DEFAULT_SETTINGS: HoarderSettings = {
   onlyFavorites: false,
   syncNotesToHoarder: true,
   syncHighlights: true,
+  onlyBookmarksWithHighlights: false,
   excludedTags: [],
   includedTags: [],
   downloadAssets: true,
@@ -301,6 +303,16 @@ export class HoarderSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.onlyFavorites).onChange(async (value) => {
           this.plugin.settings.onlyFavorites = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Only bookmarks with highlights")
+      .setDesc("Only sync bookmarks that have highlights (requires 'Sync highlights' to be enabled)")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.onlyBookmarksWithHighlights).onChange(async (value) => {
+          this.plugin.settings.onlyBookmarksWithHighlights = value;
           await this.plugin.saveSettings();
         })
       );
