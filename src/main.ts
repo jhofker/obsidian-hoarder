@@ -409,6 +409,7 @@ export default class HoarderPlugin extends Plugin {
     let excludedByTags = 0;
     let includedByTags = 0;
     let totalBookmarksProcessed = 0;
+    let skippedNoHighlights = 0;
 
     try {
       // Create sync folder if it doesn't exist
@@ -430,9 +431,10 @@ export default class HoarderPlugin extends Plugin {
         allBookmarks.filter((b) => b.archived && !activeBookmarkIds.has(b.id)).map((b) => b.id)
       );
 
-      // Fetch all highlights in bulk if enabled
+      // Fetch all highlights in bulk if enabled or if filtering by highlights
       let highlightsByBookmarkId = new Map<string, HoarderHighlight[]>();
-      if (this.settings.syncHighlights && this.client) {
+      let bookmarkIdsWithHighlights = new Set<string>();
+      if ((this.settings.syncHighlights || this.settings.onlyBookmarksWithHighlights) && this.client) {
         try {
           const allHighlights = await this.client.getAllHighlights();
 
@@ -442,6 +444,7 @@ export default class HoarderPlugin extends Plugin {
               highlightsByBookmarkId.set(highlight.bookmarkId, []);
             }
             highlightsByBookmarkId.get(highlight.bookmarkId)!.push(highlight);
+            bookmarkIdsWithHighlights.add(highlight.bookmarkId);
           }
         } catch (error) {
           console.error("Error fetching highlights in bulk:", error);
@@ -459,6 +462,12 @@ export default class HoarderPlugin extends Plugin {
 
         // Process each bookmark
         for (const bookmark of bookmarks) {
+          // Skip if filtering by highlights and bookmark has no highlights
+          if (this.settings.onlyBookmarksWithHighlights && !bookmarkIdsWithHighlights.has(bookmark.id)) {
+            skippedNoHighlights++;
+            continue;
+          }
+
           // Get bookmark tags for filtering
           const bookmarkTags = bookmark.tags.map((tag) => tag.name.toLowerCase());
 
@@ -596,6 +605,11 @@ export default class HoarderPlugin extends Plugin {
         message += `, included ${includedByTags} bookmark${
           includedByTags === 1 ? "" : "s"
         } by tags`;
+      }
+      if (skippedNoHighlights > 0) {
+        message += `, skipped ${skippedNoHighlights} bookmark${
+          skippedNoHighlights === 1 ? "" : "s"
+        } without highlights`;
       }
 
       // Add deletion results to message
