@@ -395,13 +395,17 @@ export default class HoarderPlugin extends Plugin {
 
   async syncBookmarks(): Promise<{ success: boolean; message: string }> {
     if (this.isSyncing) {
+      console.log("[Hoarder] Sync already in progress");
       return { success: false, message: "Sync already in progress" };
     }
 
     if (!this.settings.apiKey) {
+      console.log("[Hoarder] API key not configured");
       return { success: false, message: "Hoarder API key not configured" };
     }
 
+    console.log("[Hoarder] Starting sync...");
+    console.log(`[Hoarder] Settings: syncNotesToHoarder=${this.settings.syncNotesToHoarder}, updateExistingFiles=${this.settings.updateExistingFiles}`);
     this.setSyncing(true);
     let totalBookmarks = 0;
     this.skippedFiles = 0;
@@ -535,18 +539,41 @@ export default class HoarderPlugin extends Plugin {
                 const { currentNotes, originalNotes } = await this.extractNotesFromFile(fileName);
                 const remoteNotes = bookmark.note || "";
 
-                // Only update if notes have changed from their original version
-                if (
+                // Initialize original_note if it's missing
+                if (originalNotes === null && currentNotes !== null) {
+                  console.log(`[Hoarder] Initializing original_note for ${fileName}`);
+                  await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+                    frontmatter["original_note"] = remoteNotes;
+                  });
+
+                  // If current notes differ from remote, sync them
+                  if (currentNotes !== remoteNotes) {
+                    console.log(`[Hoarder] Local notes differ from remote, syncing to Hoarder`);
+                    const updated = await this.updateBookmarkInHoarder(bookmark.id, currentNotes);
+                    if (updated) {
+                      updatedInHoarder++;
+                      bookmark.note = currentNotes; // Update the bookmark object with local notes
+                      this.lastSyncedNotes = currentNotes; // Track this to avoid re-syncing
+
+                      // Update original_note to match the synced version
+                      await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+                        frontmatter["original_note"] = currentNotes;
+                      });
+                    }
+                  }
+                } else if (
                   currentNotes !== null &&
                   originalNotes !== null &&
                   currentNotes !== originalNotes &&
                   currentNotes !== remoteNotes
                 ) {
                   // Local notes have changed from original, update in Hoarder
+                  console.log(`[Hoarder] Local notes changed for ${fileName}, syncing to Hoarder`);
                   const updated = await this.updateBookmarkInHoarder(bookmark.id, currentNotes);
                   if (updated) {
                     updatedInHoarder++;
                     bookmark.note = currentNotes; // Update the bookmark object with local notes
+                    this.lastSyncedNotes = currentNotes; // Track this to avoid re-syncing
                   }
                 }
               }
@@ -841,6 +868,8 @@ ${assetsYaml}
 
   private async handleFileModification(file: TFile) {
     try {
+      console.log(`[Hoarder] File modified: ${file.path}`);
+
       // Extract current and original notes
       const { currentNotes, originalNotes } = await this.extractNotesFromFile(file.path);
 
@@ -848,22 +877,79 @@ ${assetsYaml}
       const currentNotesStr = currentNotes || "";
       const originalNotesStr = originalNotes || "";
 
+      console.log(`[Hoarder] Current notes length: ${currentNotesStr.length}, Original notes length: ${originalNotesStr.length}`);
+
       // Skip if we just synced these exact notes
       if (currentNotesStr === this.lastSyncedNotes) {
+        console.log("[Hoarder] Skipping - notes match last synced version");
         return;
       }
 
       // Get bookmark ID from frontmatter using MetadataCache
       const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
       const bookmarkId = metadata?.bookmark_id;
-      if (!bookmarkId) return;
+      if (!bookmarkId) {
+        console.log("[Hoarder] No bookmark_id found in frontmatter");
+        return;
+      }
+
+      console.log(`[Hoarder] Bookmark ID: ${bookmarkId}`);
+
+      // If original_note is null/undefined, initialize it to current value from frontmatter
+      // This handles files that were created before this fix or when updateExistingFiles was disabled
+      if (originalNotes === null) {
+        const frontmatterNote = metadata?.note || "";
+        console.log(`[Hoarder] original_note is null, initializing from frontmatter note field`);
+
+        // Initialize original_note with the note from frontmatter
+        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+          frontmatter["original_note"] = frontmatterNote;
+        });
+
+        // Re-extract to get the updated value
+        const updated = await this.extractNotesFromFile(file.path);
+        const updatedOriginalNotes = updated.originalNotes || "";
+
+        // Now compare with the initialized value
+        if (currentNotesStr !== updatedOriginalNotes) {
+          console.log("[Hoarder] Notes have changed from initialized original");
+          const success = await this.updateBookmarkInHoarder(bookmarkId, currentNotesStr);
+          if (success) {
+            this.lastSyncedNotes = currentNotesStr;
+
+            // Update original_note after successful sync
+            setTimeout(async () => {
+              try {
+                const { currentNotes: latestNotes } = await this.extractNotesFromFile(file.path);
+                if (latestNotes === currentNotesStr) {
+                  await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+                    frontmatter["original_note"] = currentNotesStr;
+                  });
+                  console.log("[Hoarder] Updated original_note in frontmatter");
+                }
+              } catch (error) {
+                console.error("[Hoarder] Error updating frontmatter:", error);
+              }
+            }, 5000);
+
+            new Notice("Notes synced to Hoarder");
+          } else {
+            console.error("[Hoarder] Failed to update bookmark in Hoarder");
+          }
+        } else {
+          console.log("[Hoarder] Notes unchanged after initialization");
+        }
+        return;
+      }
 
       // Only update if notes have changed
       if (currentNotesStr !== originalNotesStr) {
+        console.log("[Hoarder] Notes have changed, syncing to Hoarder");
         const updated = await this.updateBookmarkInHoarder(bookmarkId, currentNotesStr);
         if (updated) {
           // Store these notes as the last synced version
           this.lastSyncedNotes = currentNotesStr;
+          console.log("[Hoarder] Successfully synced notes to Hoarder");
 
           // Schedule frontmatter update for later
           setTimeout(async () => {
@@ -876,17 +962,25 @@ ${assetsYaml}
                 await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
                   frontmatter["original_note"] = currentNotesStr;
                 });
+                console.log("[Hoarder] Updated original_note in frontmatter");
+              } else {
+                console.log("[Hoarder] Notes changed again, skipping frontmatter update");
               }
             } catch (error) {
-              console.error("Error updating frontmatter:", error);
+              console.error("[Hoarder] Error updating frontmatter:", error);
             }
           }, 5000); // Wait 5 seconds before updating frontmatter
 
           new Notice("Notes synced to Hoarder");
+        } else {
+          console.error("[Hoarder] Failed to update bookmark in Hoarder");
+          new Notice("Failed to sync notes to Hoarder");
         }
+      } else {
+        console.log("[Hoarder] Notes unchanged, no sync needed");
       }
     } catch (error) {
-      console.error("Error handling file modification:", error);
+      console.error("[Hoarder] Error handling file modification:", error);
       new Notice("Failed to sync notes to Hoarder");
     }
   }
