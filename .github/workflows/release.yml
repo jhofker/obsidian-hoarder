@@ -17,10 +17,14 @@ jobs:
         with:
           node-version: "22.x"
 
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+
       - name: Build plugin
-        run: |
-          npm install
-          npm run build
+        run: npm run build
 
       - name: Create release
         env:
