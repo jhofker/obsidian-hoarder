@@ -15,6 +15,7 @@ import { escapeYaml, escapeMarkdownPath } from "./formatting-utils";
 import { extractNotesSection } from "./markdown-utils";
 import { shouldIncludeBookmark } from "./filter-utils";
 import { buildSyncMessage, SyncStats } from "./message-utils";
+import { determineDeletionActions, countDeletionResults, DeletionSettings } from "./deletion-handler";
 
 export default class HoarderPlugin extends Plugin {
   settings: HoarderSettings;
@@ -219,79 +220,57 @@ export default class HoarderPlugin extends Plugin {
     activeBookmarkIds: Set<string>,
     archivedBookmarkIds: Set<string>
   ): Promise<{ deleted: number; archived: number; tagged: number; archivedHandled: number }> {
-    let deleted = 0;
-    let archived = 0;
-    let tagged = 0;
-    let archivedHandled = 0;
+    const deletionSettings: DeletionSettings = {
+      syncDeletions: this.settings.syncDeletions,
+      deletionAction: this.settings.deletionAction,
+      handleArchivedBookmarks: this.settings.handleArchivedBookmarks,
+      archivedBookmarkAction: this.settings.archivedBookmarkAction,
+    };
 
-    if (!this.settings.syncDeletions && !this.settings.handleArchivedBookmarks) {
-      return { deleted, archived, tagged, archivedHandled };
-    }
-
-    // Find bookmarks that exist locally but not in active bookmarks
     const localBookmarkIds = Array.from(localBookmarkFiles.keys());
+    const instructions = determineDeletionActions(
+      localBookmarkIds,
+      activeBookmarkIds,
+      archivedBookmarkIds,
+      deletionSettings
+    );
 
-    for (const bookmarkId of localBookmarkIds) {
-      const filePath = localBookmarkFiles.get(bookmarkId);
+    // Execute each instruction
+    for (const instruction of instructions) {
+      const filePath = localBookmarkFiles.get(instruction.bookmarkId);
       if (!filePath) continue;
 
       const file = this.app.vault.getAbstractFileByPath(filePath);
       if (!(file instanceof TFile)) continue;
 
-      const isActive = activeBookmarkIds.has(bookmarkId);
-      const isArchived = archivedBookmarkIds.has(bookmarkId);
-
       try {
-        if (!isActive && !isArchived) {
-          // Bookmark is completely deleted from Karakeep
-          if (this.settings.syncDeletions) {
-            switch (this.settings.deletionAction) {
-              case "delete":
-                await this.app.vault.delete(file);
-                deleted++;
-                break;
+        switch (instruction.action) {
+          case "delete":
+            await this.app.vault.delete(file);
+            break;
 
-              case "archive":
-                await this.moveToArchiveFolder(file, this.settings.archiveFolder);
-                archived++;
-                break;
+          case "archive":
+            const archiveFolder =
+              instruction.reason === "deleted"
+                ? this.settings.archiveFolder
+                : this.settings.archivedBookmarkFolder;
+            await this.moveToArchiveFolder(file, archiveFolder);
+            break;
 
-              case "tag":
-                await this.addDeletionTag(file, this.settings.deletionTag);
-                tagged++;
-                break;
-            }
-          }
-        } else if (!isActive && isArchived) {
-          // Bookmark is archived in Karakeep
-          if (
-            this.settings.handleArchivedBookmarks &&
-            this.settings.archivedBookmarkAction !== "ignore"
-          ) {
-            switch (this.settings.archivedBookmarkAction) {
-              case "delete":
-                await this.app.vault.delete(file);
-                archivedHandled++;
-                break;
-
-              case "archive":
-                await this.moveToArchiveFolder(file, this.settings.archivedBookmarkFolder);
-                archivedHandled++;
-                break;
-
-              case "tag":
-                await this.addDeletionTag(file, this.settings.archivedBookmarkTag);
-                archivedHandled++;
-                break;
-            }
-          }
+          case "tag":
+            const tag =
+              instruction.reason === "deleted"
+                ? this.settings.deletionTag
+                : this.settings.archivedBookmarkTag;
+            await this.addDeletionTag(file, tag);
+            break;
         }
       } catch (error) {
-        console.error(`Error handling bookmark ${bookmarkId}:`, error);
+        console.error(`Error handling bookmark ${instruction.bookmarkId}:`, error);
       }
     }
 
-    return { deleted, archived, tagged, archivedHandled };
+    return countDeletionResults(instructions);
   }
 
   async moveToArchiveFolder(file: TFile, archiveFolder: string): Promise<void> {
