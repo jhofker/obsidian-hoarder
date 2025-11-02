@@ -9,6 +9,7 @@ import {
 } from "./hoarder-client";
 import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings";
 import { sanitizeTags } from "./tag-utils";
+import { sanitizeFileName } from "./filename-utils";
 
 export default class HoarderPlugin extends Plugin {
   settings: HoarderSettings;
@@ -500,7 +501,7 @@ export default class HoarderPlugin extends Plugin {
           }
 
           const title = this.getBookmarkTitle(bookmark);
-          const fileName = `${folderPath}/${this.sanitizeFileName(title, bookmark.createdAt)}.md`;
+          const fileName = `${folderPath}/${sanitizeFileName(title, bookmark.createdAt)}.md`;
 
           // Get highlights for this bookmark from pre-fetched map
           const highlights = highlightsByBookmarkId.get(bookmark.id) || [];
@@ -681,37 +682,6 @@ export default class HoarderPlugin extends Plugin {
     }
   }
 
-  sanitizeFileName(title: string, created_at: string): string {
-    // Format the date as YYYY-MM-DD
-    const date = new Date(created_at);
-    const dateStr = date.toISOString().split("T")[0]; // This is 10 characters
-
-    // Sanitize the title
-    let sanitizedTitle = title
-      .replace(/[\\/:*?"<>|]/g, "-") // Replace invalid characters with dash
-      .replace(/\s+/g, "-") // Replace spaces with dash
-      .replace(/-+/g, "-") // Replace multiple dashes with single dash
-      .replace(/^-|-$/g, ""); // Remove dashes from start and end
-
-    // Calculate how much space we have for the title
-    // 50 (max) - 10 (date) - 1 (dash) - 3 (.md) = 36 characters for title
-    const maxTitleLength = 36;
-
-    if (sanitizedTitle.length > maxTitleLength) {
-      // If title is too long, try to cut at a word boundary
-      const truncated = sanitizedTitle.substring(0, maxTitleLength);
-      const lastDash = truncated.lastIndexOf("-");
-      if (lastDash > maxTitleLength / 2) {
-        // If we can find a reasonable word break, use it
-        sanitizedTitle = truncated.substring(0, lastDash);
-      } else {
-        // Otherwise just truncate
-        sanitizedTitle = truncated;
-      }
-    }
-
-    return `${dateStr}-${sanitizedTitle}`;
-  }
 
   async formatBookmarkAsMarkdown(
     bookmark: HoarderBookmark,
