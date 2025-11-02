@@ -11,6 +11,7 @@ import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings
 import { sanitizeTags } from "./tag-utils";
 import { sanitizeFileName } from "./filename-utils";
 import { getBookmarkTitle } from "./bookmark-utils";
+import { escapeYaml, escapeMarkdownPath } from "./formatting-utils";
 
 export default class HoarderPlugin extends Plugin {
   settings: HoarderSettings;
@@ -638,32 +639,6 @@ export default class HoarderPlugin extends Plugin {
       bookmark.content.type === "link" ? bookmark.content.description : bookmark.content.text;
     const rawTags = bookmark.tags.map((tag) => tag.name);
     const tags = sanitizeTags(rawTags);
-
-    // Helper function to escape paths for markdown (handles spaces)
-    const escapeMarkdownPath = (path: string): string => {
-      // If path contains spaces or other special characters, wrap in angle brackets
-      if (path.includes(" ") || /[<>[\](){}]/.test(path)) {
-        return `<${path}>`;
-      }
-      return path;
-    };
-
-    // Helper function to escape YAML values for simple scalars
-    const escapeYaml = (str: string | null | undefined): string => {
-      if (!str) return "";
-      // If string contains newlines or special characters, use block scalar
-      if (str.includes("\n") || /[:#{}\[\],&*?|<>=!%@`]/.test(str)) {
-        return `|\n  ${str.replace(/\n/g, "\n  ")}`;
-      }
-      // For simple strings, just wrap in quotes if needed
-      if (str.includes('"')) {
-        return `'${str}'`;
-      }
-      if (str.includes("'") || /^[ \t]|[ \t]$/.test(str)) {
-        return `"${str.replace(/\"/g, '\\\"')}"`;
-      }
-      return str;
-    };
 
 
     // Handle images and assets first to collect frontmatter entries
