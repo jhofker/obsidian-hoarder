@@ -23,17 +23,17 @@
   "license": "MIT",
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^5",
-    "@types/jest": "^30.0.0",
+    "@types/jest": "^30",
     "@types/node": "^22",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
-    "builtin-modules": "^4",
-    "esbuild": "^0.24",
-    "jest": "^30.2.0",
-    "obsidian": "^1.8",
+    "builtin-modules": "^5",
+    "esbuild": "^0.25",
+    "jest": "^30",
+    "obsidian": "^1.10",
     "prettier": "^3",
     "prompt-sync": "^4",
-    "ts-jest": "^29.4.5",
+    "ts-jest": "^29",
     "tslib": "^2",
     "typescript": "^5"
   }
