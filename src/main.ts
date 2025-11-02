@@ -12,6 +12,7 @@ import { sanitizeTags } from "./tag-utils";
 import { sanitizeFileName } from "./filename-utils";
 import { getBookmarkTitle } from "./bookmark-utils";
 import { escapeYaml, escapeMarkdownPath } from "./formatting-utils";
+import { extractNotesSection } from "./markdown-utils";
 
 export default class HoarderPlugin extends Plugin {
   settings: HoarderSettings;
@@ -157,8 +158,7 @@ export default class HoarderPlugin extends Plugin {
       const content = await this.app.vault.adapter.read(filePath);
 
       // Extract notes from the content
-      const notesMatch = content.match(/## Notes\n\n([\s\S]*?)(?=\n##|\n\[|$)/);
-      const currentNotes = notesMatch ? notesMatch[1].trim() : null;
+      const currentNotes = extractNotesSection(content);
 
       // Use MetadataCache to get frontmatter
       const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
