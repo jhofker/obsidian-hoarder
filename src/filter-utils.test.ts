@@ -72,12 +72,7 @@ describe("shouldIncludeBookmark", () => {
     });
 
     it("should exclude if any excluded tag matches", () => {
-      const result = shouldIncludeBookmark(
-        ["work", "spam"],
-        [],
-        ["spam", "junk", "ads"],
-        false
-      );
+      const result = shouldIncludeBookmark(["work", "spam"], [], ["spam", "junk", "ads"], false);
       expect(result.include).toBe(false);
       expect(result.reason).toBe("excluded_tag");
     });
@@ -210,12 +205,7 @@ describe("shouldIncludeBookmark", () => {
     });
 
     it("should exclude archived unless favorited", () => {
-      const notFavorited = shouldIncludeBookmark(
-        ["project", "archived"],
-        [],
-        ["archived"],
-        false
-      );
+      const notFavorited = shouldIncludeBookmark(["project", "archived"], [], ["archived"], false);
       expect(notFavorited.include).toBe(false);
 
       const favorited = shouldIncludeBookmark(["project", "archived"], [], ["archived"], true);

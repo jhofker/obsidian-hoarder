@@ -47,7 +47,5 @@ export function sanitizeTag(tag: string): string | null {
  * @returns Array of valid sanitized tags (empty array if no valid tags)
  */
 export function sanitizeTags(tags: string[]): string[] {
-  return tags
-    .map(sanitizeTag)
-    .filter((tag): tag is string => tag !== null);
+  return tags.map(sanitizeTag).filter((tag): tag is string => tag !== null);
 }

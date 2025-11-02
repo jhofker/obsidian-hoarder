@@ -68,9 +68,7 @@ export function buildSyncMessage(stats: SyncStats): string {
 
   // Add deletion results to message
   const totalDeleted =
-    stats.deletionResults.deleted +
-    stats.deletionResults.archived +
-    stats.deletionResults.tagged;
+    stats.deletionResults.deleted + stats.deletionResults.archived + stats.deletionResults.tagged;
   const totalArchived = stats.deletionResults.archivedHandled;
 
   if (totalDeleted > 0 || totalArchived > 0) {

@@ -238,7 +238,9 @@ export class HoarderSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Update existing files")
-      .setDesc("Whether to update existing bookmark files when remote data changes. When disabled, only new bookmarks will be created.")
+      .setDesc(
+        "Whether to update existing bookmark files when remote data changes. When disabled, only new bookmarks will be created."
+      )
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.updateExistingFiles).onChange(async (value) => {
           this.plugin.settings.updateExistingFiles = value;
@@ -309,12 +311,16 @@ export class HoarderSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Only bookmarks with highlights")
-      .setDesc("Only sync bookmarks that have highlights (requires 'Sync highlights' to be enabled)")
+      .setDesc(
+        "Only sync bookmarks that have highlights (requires 'Sync highlights' to be enabled)"
+      )
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.onlyBookmarksWithHighlights).onChange(async (value) => {
-          this.plugin.settings.onlyBookmarksWithHighlights = value;
-          await this.plugin.saveSettings();
-        })
+        toggle
+          .setValue(this.plugin.settings.onlyBookmarksWithHighlights)
+          .onChange(async (value) => {
+            this.plugin.settings.onlyBookmarksWithHighlights = value;
+            await this.plugin.saveSettings();
+          })
       );
 
     new Setting(containerEl)

@@ -1,4 +1,4 @@
-import { escapeYaml, escapeMarkdownPath } from "./formatting-utils";
+import { escapeMarkdownPath, escapeYaml } from "./formatting-utils";
 
 describe("escapeYaml", () => {
   describe("null and empty handling", () => {
@@ -287,9 +287,7 @@ describe("escapeMarkdownPath", () => {
     });
 
     it("should handle unicode characters", () => {
-      expect(escapeMarkdownPath("https://example.com/日本語")).toBe(
-        "https://example.com/日本語"
-      );
+      expect(escapeMarkdownPath("https://example.com/日本語")).toBe("https://example.com/日本語");
     });
 
     it("should handle unicode with spaces", () => {

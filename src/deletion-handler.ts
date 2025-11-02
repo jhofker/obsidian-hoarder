@@ -70,10 +70,7 @@ export function determineDeletionActions(
       }
     } else if (!isActive && isArchived) {
       // Bookmark is archived remotely
-      if (
-        settings.handleArchivedBookmarks &&
-        settings.archivedBookmarkAction !== "ignore"
-      ) {
+      if (settings.handleArchivedBookmarks && settings.archivedBookmarkAction !== "ignore") {
         instructions.push({
           bookmarkId,
           action: settings.archivedBookmarkAction,
@@ -92,9 +89,7 @@ export function determineDeletionActions(
  * @param instructions - Array of instructions that were executed
  * @returns Counts of each action type
  */
-export function countDeletionResults(
-  instructions: FileHandlingInstruction[]
-): DeletionResults {
+export function countDeletionResults(instructions: FileHandlingInstruction[]): DeletionResults {
   const results: DeletionResults = {
     deleted: 0,
     archived: 0,

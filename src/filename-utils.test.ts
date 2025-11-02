@@ -195,7 +195,9 @@ describe("sanitizeFileName", () => {
     });
 
     it("should handle article titles with punctuation", () => {
-      expect(sanitizeFileName("What's New in 2024?", testDate)).toBe("2024-01-15-What's-New-in-2024");
+      expect(sanitizeFileName("What's New in 2024?", testDate)).toBe(
+        "2024-01-15-What's-New-in-2024"
+      );
     });
 
     it("should handle book titles", () => {

@@ -1,4 +1,4 @@
-import { buildSyncMessage, SyncStats } from "./message-utils";
+import { SyncStats, buildSyncMessage } from "./message-utils";
 
 describe("buildSyncMessage", () => {
   const baseStats: SyncStats = {

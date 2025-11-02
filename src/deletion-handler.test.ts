@@ -1,8 +1,8 @@
 import {
-  determineDeletionActions,
-  countDeletionResults,
   DeletionSettings,
   FileHandlingInstruction,
+  countDeletionResults,
+  determineDeletionActions,
 } from "./deletion-handler";
 
 describe("determineDeletionActions", () => {
@@ -26,12 +26,7 @@ describe("determineDeletionActions", () => {
 
     it("should not process deletions when syncDeletions is false", () => {
       const settings = { ...defaultSettings, handleArchivedBookmarks: true };
-      const result = determineDeletionActions(
-        ["deleted-bookmark"],
-        new Set(),
-        new Set(),
-        settings
-      );
+      const result = determineDeletionActions(["deleted-bookmark"], new Set(), new Set(), settings);
       expect(result).toEqual([]);
     });
 
@@ -56,15 +51,8 @@ describe("determineDeletionActions", () => {
     };
 
     it("should detect completely deleted bookmark", () => {
-      const result = determineDeletionActions(
-        ["bookmark1"],
-        new Set(),
-        new Set(),
-        settings
-      );
-      expect(result).toEqual([
-        { bookmarkId: "bookmark1", action: "delete", reason: "deleted" },
-      ]);
+      const result = determineDeletionActions(["bookmark1"], new Set(), new Set(), settings);
+      expect(result).toEqual([{ bookmarkId: "bookmark1", action: "delete", reason: "deleted" }]);
     });
 
     it("should handle multiple deleted bookmarks", () => {
@@ -85,9 +73,7 @@ describe("determineDeletionActions", () => {
         new Set(),
         settings
       );
-      expect(result).toEqual([
-        { bookmarkId: "deleted1", action: "delete", reason: "deleted" },
-      ]);
+      expect(result).toEqual([{ bookmarkId: "deleted1", action: "delete", reason: "deleted" }]);
     });
 
     it("should not include archived bookmarks in deleted", () => {
@@ -97,9 +83,7 @@ describe("determineDeletionActions", () => {
         new Set(["archived1"]),
         settings
       );
-      expect(result).toEqual([
-        { bookmarkId: "deleted1", action: "delete", reason: "deleted" },
-      ]);
+      expect(result).toEqual([{ bookmarkId: "deleted1", action: "delete", reason: "deleted" }]);
     });
   });
 
@@ -164,9 +148,7 @@ describe("determineDeletionActions", () => {
         new Set(["bookmark1"]),
         settings
       );
-      expect(result).toEqual([
-        { bookmarkId: "bookmark1", action: "archive", reason: "archived" },
-      ]);
+      expect(result).toEqual([{ bookmarkId: "bookmark1", action: "archive", reason: "archived" }]);
     });
 
     it("should handle multiple archived bookmarks", () => {
@@ -187,9 +169,7 @@ describe("determineDeletionActions", () => {
         new Set(["archived1"]),
         settings
       );
-      expect(result).toEqual([
-        { bookmarkId: "archived1", action: "archive", reason: "archived" },
-      ]);
+      expect(result).toEqual([{ bookmarkId: "archived1", action: "archive", reason: "archived" }]);
     });
   });
 

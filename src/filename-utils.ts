@@ -10,7 +10,7 @@
  */
 export function sanitizeFileName(title: string, createdAt: string | Date): string {
   // Format the date as YYYY-MM-DD
-  const date = typeof createdAt === 'string' ? new Date(createdAt) : createdAt;
+  const date = typeof createdAt === "string" ? new Date(createdAt) : createdAt;
   const dateStr = date.toISOString().split("T")[0]; // This is 10 characters
 
   // Sanitize the title

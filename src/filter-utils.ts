@@ -30,9 +30,7 @@ export function shouldIncludeBookmark(
 ): FilterResult {
   // Filter by included tags if specified
   if (includedTags.length > 0) {
-    const hasIncludedTag = includedTags.some((includedTag) =>
-      bookmarkTags.includes(includedTag)
-    );
+    const hasIncludedTag = includedTags.some((includedTag) => bookmarkTags.includes(includedTag));
     if (!hasIncludedTag) {
       return { include: false, reason: "missing_included_tag" };
     }
@@ -40,9 +38,7 @@ export function shouldIncludeBookmark(
 
   // Skip excluded tag check if bookmark is favorited
   if (!isFavorited && excludedTags.length > 0) {
-    const hasExcludedTag = excludedTags.some((excludedTag) =>
-      bookmarkTags.includes(excludedTag)
-    );
+    const hasExcludedTag = excludedTags.some((excludedTag) => bookmarkTags.includes(excludedTag));
     if (hasExcludedTag) {
       return { include: false, reason: "excluded_tag" };
     }
