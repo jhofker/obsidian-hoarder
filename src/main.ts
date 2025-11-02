@@ -8,6 +8,7 @@ import {
   PaginatedBookmarks,
 } from "./hoarder-client";
 import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings";
+import { sanitizeTags } from "./tag-utils";
 
 export default class HoarderPlugin extends Plugin {
   settings: HoarderSettings;
@@ -721,7 +722,8 @@ export default class HoarderPlugin extends Plugin {
       bookmark.content.type === "link" ? bookmark.content.url : bookmark.content.sourceUrl;
     const description =
       bookmark.content.type === "link" ? bookmark.content.description : bookmark.content.text;
-    const tags = bookmark.tags.map((tag) => tag.name);
+    const rawTags = bookmark.tags.map((tag) => tag.name);
+    const tags = sanitizeTags(rawTags);
 
     // Helper function to escape paths for markdown (handles spaces)
     const escapeMarkdownPath = (path: string): string => {
@@ -749,16 +751,6 @@ export default class HoarderPlugin extends Plugin {
       return str;
     };
 
-    // Helper function to escape tag values
-    const escapeTag = (tag: string): string => {
-      // Replace spaces with hyphens and handle other special characters
-      const processedTag = tag.replace(/\s+/g, "-");
-      // Always quote tags to handle other special characters
-      if (processedTag.includes('"')) {
-        return `'${processedTag}'`;
-      }
-      return `"${processedTag}"`;
-    };
 
     // Handle images and assets first to collect frontmatter entries
     const { content: assetContent, frontmatter: assetsFm } = await processBookmarkAssets(
@@ -788,14 +780,17 @@ export default class HoarderPlugin extends Plugin {
       assetsYaml = lines.join("\n") + "\n";
     }
 
+    // Build tags YAML - only include if there are valid tags
+    const tagsYaml = tags.length > 0
+      ? `tags:\n  - ${tags.join("\n  - ")}\n`
+      : "";
+
     let content = `---
 bookmark_id: "${bookmark.id}"
 url: ${escapeYaml(url)}
 title: ${escapeYaml(title)}
 date: ${new Date(bookmark.createdAt).toISOString()}
-${bookmark.modifiedAt ? `modified: ${new Date(bookmark.modifiedAt).toISOString()}\n` : ""}tags:
-  - ${tags.map(escapeTag).join("\n  - ")}
-note: ${escapeYaml(bookmark.note)}
+${bookmark.modifiedAt ? `modified: ${new Date(bookmark.modifiedAt).toISOString()}\n` : ""}${tagsYaml}note: ${escapeYaml(bookmark.note)}
 original_note: ${escapeYaml(bookmark.note)}
 summary: ${escapeYaml(bookmark.summary)}
 ${assetsYaml}

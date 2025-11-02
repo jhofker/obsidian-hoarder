@@ -8,6 +8,9 @@
     "dev": "npm run clean && node esbuild.config.mjs",
     "build": "npm run clean && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,json,css,scss,md}\"",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "version": "node version.mjs",
     "install-plugin": "npm run build && mkdir -p \"${OBSIDIAN_VAULT:-$HOME/Documents/github/notes}/.obsidian/plugins/obsidian-hoarder\" && cp -r dist/* \"${OBSIDIAN_VAULT:-$HOME/Documents/github/notes}/.obsidian/plugins/obsidian-hoarder/\""
   },
@@ -20,16 +23,18 @@
   "license": "MIT",
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^5",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
     "builtin-modules": "^4",
     "esbuild": "^0.24",
+    "jest": "^30.2.0",
     "obsidian": "^1.8",
     "prettier": "^3",
     "prompt-sync": "^4",
+    "ts-jest": "^29.4.5",
     "tslib": "^2",
     "typescript": "^5"
-  },
-  "dependencies": {}
+  }
 }
