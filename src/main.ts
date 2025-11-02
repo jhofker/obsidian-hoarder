@@ -14,6 +14,7 @@ import { getBookmarkTitle } from "./bookmark-utils";
 import { escapeYaml, escapeMarkdownPath } from "./formatting-utils";
 import { extractNotesSection } from "./markdown-utils";
 import { shouldIncludeBookmark } from "./filter-utils";
+import { buildSyncMessage, SyncStats } from "./message-utils";
 
 export default class HoarderPlugin extends Plugin {
   settings: HoarderSettings;
@@ -556,56 +557,17 @@ export default class HoarderPlugin extends Plugin {
       this.settings.lastSyncTimestamp = Date.now();
       await this.saveSettings();
 
-      let message = `Successfully synced ${totalBookmarks} bookmark${
-        totalBookmarks === 1 ? "" : "s"
-      }`;
-      if (this.skippedFiles > 0) {
-        message += ` (skipped ${this.skippedFiles} existing file${
-          this.skippedFiles === 1 ? "" : "s"
-        })`;
-      }
-      if (updatedInHoarder > 0) {
-        message += ` and updated ${updatedInHoarder} note${
-          updatedInHoarder === 1 ? "" : "s"
-        } in Karakeep`;
-      }
-      if (excludedByTags > 0) {
-        message += `, excluded ${excludedByTags} bookmark${
-          excludedByTags === 1 ? "" : "s"
-        } by tags`;
-      }
-      if (includedByTags > 0 && this.settings.includedTags.length > 0) {
-        message += `, included ${includedByTags} bookmark${
-          includedByTags === 1 ? "" : "s"
-        } by tags`;
-      }
-      if (skippedNoHighlights > 0) {
-        message += `, skipped ${skippedNoHighlights} bookmark${
-          skippedNoHighlights === 1 ? "" : "s"
-        } without highlights`;
-      }
-
-      // Add deletion results to message
-      const totalDeleted =
-        deletionResults.deleted + deletionResults.archived + deletionResults.tagged;
-      const totalArchived = deletionResults.archivedHandled;
-      if (totalDeleted > 0 || totalArchived > 0) {
-        if (totalDeleted > 0) {
-          message += `, processed ${totalDeleted} deleted bookmark${totalDeleted === 1 ? "" : "s"}`;
-          if (deletionResults.deleted > 0) {
-            message += ` (${deletionResults.deleted} deleted)`;
-          }
-          if (deletionResults.archived > 0) {
-            message += ` (${deletionResults.archived} archived)`;
-          }
-          if (deletionResults.tagged > 0) {
-            message += ` (${deletionResults.tagged} tagged)`;
-          }
-        }
-        if (totalArchived > 0) {
-          message += `, handled ${totalArchived} archived bookmark${totalArchived === 1 ? "" : "s"}`;
-        }
-      }
+      const stats: SyncStats = {
+        totalBookmarks,
+        skippedFiles: this.skippedFiles,
+        updatedInHoarder,
+        excludedByTags,
+        includedByTags,
+        includedTagsEnabled: this.settings.includedTags.length > 0,
+        skippedNoHighlights,
+        deletionResults,
+      };
+      const message = buildSyncMessage(stats);
 
       return {
         success: true,
