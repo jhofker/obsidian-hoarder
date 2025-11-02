@@ -13,6 +13,7 @@ import { sanitizeFileName } from "./filename-utils";
 import { getBookmarkTitle } from "./bookmark-utils";
 import { escapeYaml, escapeMarkdownPath } from "./formatting-utils";
 import { extractNotesSection } from "./markdown-utils";
+import { shouldIncludeBookmark } from "./filter-utils";
 
 export default class HoarderPlugin extends Plugin {
   settings: HoarderSettings;
@@ -422,27 +423,22 @@ export default class HoarderPlugin extends Plugin {
           // Get bookmark tags for filtering
           const bookmarkTags = bookmark.tags.map((tag) => tag.name.toLowerCase());
 
-          // Filter by included tags if specified
-          if (this.settings.includedTags.length > 0) {
-            const hasIncludedTag = this.settings.includedTags.some((includedTag) =>
-              bookmarkTags.includes(includedTag.toLowerCase())
-            );
-            if (!hasIncludedTag) {
-              excludedByTags++;
-              continue;
-            }
-            includedByTags++;
+          // Check if bookmark should be included based on tag filters
+          const filterResult = shouldIncludeBookmark(
+            bookmarkTags,
+            this.settings.includedTags.map((t) => t.toLowerCase()),
+            this.settings.excludedTags.map((t) => t.toLowerCase()),
+            bookmark.favourited
+          );
+
+          if (!filterResult.include) {
+            excludedByTags++;
+            continue;
           }
 
-          // Skip if bookmark has any excluded tags
-          if (!bookmark.favourited && this.settings.excludedTags.length > 0) {
-            const hasExcludedTag = this.settings.excludedTags.some((excludedTag) =>
-              bookmarkTags.includes(excludedTag.toLowerCase())
-            );
-            if (hasExcludedTag) {
-              excludedByTags++;
-              continue;
-            }
+          // Count included bookmarks when using include filter
+          if (this.settings.includedTags.length > 0) {
+            includedByTags++;
           }
 
           const title = getBookmarkTitle(bookmark);
