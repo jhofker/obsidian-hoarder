@@ -541,10 +541,7 @@ export default class HoarderPlugin extends Plugin {
 
                 // Initialize original_note if it's missing
                 if (originalNotes === null && currentNotes !== null) {
-                  console.log(`[Hoarder] Initializing original_note for ${fileName}`);
-                  await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-                    frontmatter["original_note"] = remoteNotes;
-                  });
+                  console.log(`[Hoarder] original_note missing for ${fileName}`);
 
                   // If current notes differ from remote, sync them
                   if (currentNotes !== remoteNotes) {
@@ -555,11 +552,17 @@ export default class HoarderPlugin extends Plugin {
                       bookmark.note = currentNotes; // Update the bookmark object with local notes
                       this.lastSyncedNotes = currentNotes; // Track this to avoid re-syncing
 
-                      // Update original_note to match the synced version
+                      // Now initialize original_note to match the synced version
+                      console.log(`[Hoarder] Initializing original_note to synced value for ${fileName}`);
                       await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
                         frontmatter["original_note"] = currentNotes;
                       });
                     }
+                  } else {
+                    // Current notes match remote, only update frontmatter if they're different
+                    // Since currentNotes === remoteNotes, we can skip the frontmatter update entirely
+                    // to avoid changing mtime. The frontmatter will be initialized on the next actual change.
+                    console.log(`[Hoarder] Notes match remote, skipping original_note initialization to preserve mtime`);
                   }
                 } else if (
                   currentNotes !== null &&
@@ -899,33 +902,27 @@ ${assetsYaml}
       // This handles files that were created before this fix or when updateExistingFiles was disabled
       if (originalNotes === null) {
         const frontmatterNote = metadata?.note || "";
-        console.log(`[Hoarder] original_note is null, initializing from frontmatter note field`);
+        console.log(`[Hoarder] original_note is null for ${file.path}`);
 
-        // Initialize original_note with the note from frontmatter
-        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-          frontmatter["original_note"] = frontmatterNote;
-        });
-
-        // Re-extract to get the updated value
-        const updated = await this.extractNotesFromFile(file.path);
-        const updatedOriginalNotes = updated.originalNotes || "";
-
-        // Now compare with the initialized value
-        if (currentNotesStr !== updatedOriginalNotes) {
-          console.log("[Hoarder] Notes have changed from initialized original");
+        // Check if current notes differ from what's in frontmatter
+        if (currentNotesStr !== frontmatterNote) {
+          console.log("[Hoarder] Notes have changed from frontmatter note");
           const success = await this.updateBookmarkInHoarder(bookmarkId, currentNotesStr);
           if (success) {
             this.lastSyncedNotes = currentNotesStr;
 
-            // Update original_note after successful sync
+            // Initialize original_note after successful sync
             setTimeout(async () => {
               try {
-                const { currentNotes: latestNotes } = await this.extractNotesFromFile(file.path);
-                if (latestNotes === currentNotesStr) {
+                const { currentNotes: latestNotes, originalNotes: currentOriginalNotes } = await this.extractNotesFromFile(file.path);
+                // Only update if notes haven't changed AND original_note still needs initialization
+                if (latestNotes === currentNotesStr && currentOriginalNotes !== currentNotesStr) {
                   await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
                     frontmatter["original_note"] = currentNotesStr;
                   });
-                  console.log("[Hoarder] Updated original_note in frontmatter");
+                  console.log("[Hoarder] Initialized and updated original_note in frontmatter");
+                } else if (currentOriginalNotes === currentNotesStr) {
+                  console.log("[Hoarder] original_note already initialized, skipping frontmatter update");
                 }
               } catch (error) {
                 console.error("[Hoarder] Error updating frontmatter:", error);
@@ -937,7 +934,9 @@ ${assetsYaml}
             console.error("[Hoarder] Failed to update bookmark in Hoarder");
           }
         } else {
-          console.log("[Hoarder] Notes unchanged after initialization");
+          // Notes match frontmatter note, skip initialization to preserve mtime
+          // The field will be initialized on the next actual change
+          console.log("[Hoarder] Notes match frontmatter, skipping original_note initialization to preserve mtime");
         }
         return;
       }
@@ -955,16 +954,18 @@ ${assetsYaml}
           setTimeout(async () => {
             try {
               // Re-read the file to get the latest content
-              const { currentNotes: latestNotes } = await this.extractNotesFromFile(file.path);
+              const { currentNotes: latestNotes, originalNotes: currentOriginalNotes } = await this.extractNotesFromFile(file.path);
 
-              // Only update frontmatter if notes haven't changed since sync
-              if (latestNotes === currentNotesStr) {
+              // Only update frontmatter if notes haven't changed since sync AND original_note needs updating
+              if (latestNotes === currentNotesStr && currentOriginalNotes !== currentNotesStr) {
                 await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
                   frontmatter["original_note"] = currentNotesStr;
                 });
                 console.log("[Hoarder] Updated original_note in frontmatter");
-              } else {
+              } else if (latestNotes !== currentNotesStr) {
                 console.log("[Hoarder] Notes changed again, skipping frontmatter update");
+              } else {
+                console.log("[Hoarder] original_note already up to date, skipping frontmatter update");
               }
             } catch (error) {
               console.error("[Hoarder] Error updating frontmatter:", error);
