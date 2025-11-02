@@ -10,6 +10,7 @@ import {
 import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings";
 import { sanitizeTags } from "./tag-utils";
 import { sanitizeFileName } from "./filename-utils";
+import { getBookmarkTitle } from "./bookmark-utils";
 
 export default class HoarderPlugin extends Plugin {
   settings: HoarderSettings;
@@ -142,63 +143,6 @@ export default class HoarderPlugin extends Plugin {
     return allBookmarks;
   }
 
-  getBookmarkTitle(bookmark: HoarderBookmark): string {
-    // Try main title first
-    if (bookmark.title) {
-      return bookmark.title;
-    }
-
-    // Try content based on type
-    if (bookmark.content.type === "link") {
-      // For links, try content title, then URL
-      if (bookmark.content.title) {
-        return bookmark.content.title;
-      }
-      if (bookmark.content.url) {
-        try {
-          const url = new URL(bookmark.content.url);
-          // Use pathname without extension as title
-          const pathTitle = url.pathname
-            .split("/")
-            .pop()
-            ?.replace(/\.[^/.]+$/, "") // Remove file extension
-            ?.replace(/-|_/g, " "); // Replace dashes and underscores with spaces
-          if (pathTitle) {
-            return pathTitle;
-          }
-          // Fallback to hostname
-          return url.hostname.replace(/^www\./, "");
-        } catch {
-          return bookmark.content.url;
-        }
-      }
-    } else if (bookmark.content.type === "text") {
-      // For text content, use first line or first few words
-      if (bookmark.content.text) {
-        const firstLine = bookmark.content.text.split("\n")[0];
-        if (firstLine.length <= 100) {
-          return firstLine;
-        }
-        return firstLine.substring(0, 97) + "...";
-      }
-    } else if (bookmark.content.type === "asset") {
-      // For assets, use filename or source URL
-      if (bookmark.content.fileName) {
-        return bookmark.content.fileName.replace(/\.[^/.]+$/, ""); // Remove file extension
-      }
-      if (bookmark.content.sourceUrl) {
-        try {
-          const url = new URL(bookmark.content.sourceUrl);
-          return url.pathname.split("/").pop() || url.hostname;
-        } catch {
-          return bookmark.content.sourceUrl;
-        }
-      }
-    }
-
-    // Fallback to ID with timestamp
-    return `Bookmark-${bookmark.id}-${new Date(bookmark.createdAt).toISOString().split("T")[0]}`;
-  }
 
   async extractNotesFromFile(
     filePath: string
@@ -500,7 +444,7 @@ export default class HoarderPlugin extends Plugin {
             }
           }
 
-          const title = this.getBookmarkTitle(bookmark);
+          const title = getBookmarkTitle(bookmark);
           const fileName = `${folderPath}/${sanitizeFileName(title, bookmark.createdAt)}.md`;
 
           // Get highlights for this bookmark from pre-fetched map
