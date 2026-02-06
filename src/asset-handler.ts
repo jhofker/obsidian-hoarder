@@ -1,282 +1,312 @@
-import { App } from "obsidian";
+/**
+ * asset-handler.ts
+ *
+ * Downloads bookmark assets (screenshots, banner images, etc.) from Karakeep
+ * and saves them locally in the vault so they render in Obsidian.
+ *
+ * Assets are fetched from Karakeep's internal asset route:
+ *   GET {serverBase}/api/assets/{assetId}
+ *
+ * This uses Obsidian's requestUrl which bypasses CORS restrictions and
+ * authenticates via Bearer token. Previously, the plugin referenced remote
+ * asset URLs that required session cookie auth, resulting in broken images.
+ */
 
+import { App, TFile, TFolder, normalizePath, requestUrl } from "obsidian";
 import { HoarderApiClient, HoarderBookmark } from "./hoarder-client";
 import { HoarderSettings } from "./settings";
 
-export type AssetFrontmatter = {
-  image?: string; // wikilink [[path]]
-  banner?: string; // wikilink [[path]]
-  screenshot?: string; // wikilink [[path]]
-  full_page_archive?: string; // wikilink [[path]]
-  video?: string; // wikilink [[path]] (only if downloaded, typically omitted)
-  additional?: string[]; // array of wikilinks
-};
-
-function getAssetUrl(
-  assetId: string,
-  client: HoarderApiClient | null,
-  settings: HoarderSettings
-): string {
-  if (client) {
-    return client.getAssetUrl(assetId);
-  }
-  // Fallback if client is not initialized
-  const baseUrl = settings.apiEndpoint.replace(/\/v1\/?$/, "");
-  return `${baseUrl}/assets/${assetId}`;
+interface AssetFrontmatter {
+  image?: string;
+  banner?: string;
+  screenshot?: string;
+  full_page_archive?: string;
+  video?: string;
+  additional?: string[];
 }
 
-function sanitizeAssetFileName(title: string): string {
-  // Sanitize the title
-  let sanitizedTitle = title
-    .replace(/[\\/:*?"<>|]/g, "-") // Replace invalid characters with dash
-    .replace(/\s+/g, "-") // Replace spaces with dash
-    .replace(/-+/g, "-") // Replace multiple dashes with single dash
-    .replace(/^-|-$/g, ""); // Remove dashes from start and end
+interface AssetResult {
+  /** Markdown body content to append (image embeds, etc.) */
+  content: string;
+  /** Frontmatter entries for assets */
+  frontmatter: AssetFrontmatter | null;
+}
 
-  // Use a shorter max length for asset filenames
-  const maxTitleLength = 30;
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-  if (sanitizedTitle.length > maxTitleLength) {
-    // If title is too long, try to cut at a word boundary
-    const truncated = sanitizedTitle.substring(0, maxTitleLength);
-    const lastDash = truncated.lastIndexOf("-");
-    if (lastDash > maxTitleLength / 2) {
-      // If we can find a reasonable word break, use it
-      sanitizedTitle = truncated.substring(0, lastDash);
-    } else {
-      // Otherwise just truncate
-      sanitizedTitle = truncated;
+/** Create a folder and all parent folders if they don't exist. */
+async function ensureFolderExists(app: App, folderPath: string): Promise<void> {
+  const normalized = normalizePath(folderPath);
+  if (app.vault.getAbstractFileByPath(normalized) instanceof TFolder) return;
+
+  const parts = normalized.split("/");
+  let current = "";
+  for (const part of parts) {
+    current = current ? `${current}/${part}` : part;
+    if (!app.vault.getAbstractFileByPath(current)) {
+      await app.vault.createFolder(current);
     }
   }
-
-  return sanitizedTitle;
 }
 
-async function downloadImage(
+/** Detect file type from the first bytes of a binary buffer. */
+function detectExtension(buffer: ArrayBuffer): string {
+  const b = new Uint8Array(buffer, 0, Math.min(12, buffer.byteLength));
+  if (b.length < 4) return ".bin";
+
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return ".png";
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return ".jpg";
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return ".gif";
+  if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46) return ".pdf";
+  if (b[0] === 0x42 && b[1] === 0x4d) return ".bmp";
+  if (
+    b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+    b.length >= 12 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50
+  ) return ".webp";
+  if (b.length >= 8 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return ".avif";
+
+  return ".bin";
+}
+
+/** Guess a file extension from the Karakeep asset type string. */
+function extensionFromAssetType(assetType: string): string {
+  const t = assetType.toLowerCase();
+  if (t.includes("screenshot")) return ".png";
+  if (t.includes("banner") || t.includes("image")) return ".jpg";
+  if (t.includes("fullpage") || t.includes("archive")) return ".html";
+  if (t.includes("video")) return ".mp4";
+  if (t.includes("pdf") || t === "pdf") return ".pdf";
+  return ".bin";
+}
+
+/**
+ * Extract the server base URL from the configured API endpoint.
+ * "https://example.com/api/v1" → "https://example.com"
+ */
+function getServerBase(apiEndpoint: string): string {
+  return apiEndpoint.replace(/\/api\/v\d+\/?$/, "");
+}
+
+/**
+ * Download a single asset from Karakeep and save it to the vault.
+ *
+ * The download URL is {serverBase}/api/assets/{assetId} — this is Karakeep's
+ * internal Next.js asset route. Note: the REST API path /api/v1/assets/ is
+ * for upload/attach operations only and does not serve binary downloads.
+ *
+ * Uses Obsidian's requestUrl to bypass CORS (it goes through Electron's
+ * net module rather than the browser's fetch).
+ *
+ * @returns The vault-relative path to the saved file, or null on failure.
+ */
+async function downloadAsset(
   app: App,
-  url: string,
+  settings: HoarderSettings,
   assetId: string,
-  title: string,
-  client: HoarderApiClient | null,
-  settings: HoarderSettings
+  assetTypeHint: string,
+  nameHint: string
 ): Promise<string | null> {
+  if (!assetId) return null;
+
+  const attachFolder = normalizePath(
+    settings.attachmentsFolder || `${settings.syncFolder}/attachments`
+  );
+
+  // Skip if already downloaded
   try {
-    // Create attachments folder if it doesn't exist
-    if (!(await app.vault.adapter.exists(settings.attachmentsFolder))) {
-      await app.vault.createFolder(settings.attachmentsFolder);
-    }
-
-    // Get file extension from URL or default to jpg
-    const extension = url.split(".").pop()?.toLowerCase() || "jpg";
-    const safeExtension = ["jpg", "jpeg", "png", "gif", "webp"].includes(extension)
-      ? extension
-      : "jpg";
-
-    // Create a safe filename using just the assetId and a short title
-    const safeTitle = sanitizeAssetFileName(title);
-    const fileName = `${assetId}${safeTitle ? "-" + safeTitle : ""}.${safeExtension}`;
-    const filePath = `${settings.attachmentsFolder}/${fileName}`;
-
-    // Check if file already exists with any extension
-    const files = await app.vault.adapter.list(settings.attachmentsFolder);
-    const existingFile = files.files.find((filePathItem: string) =>
-      filePathItem.startsWith(`${settings.attachmentsFolder}/${assetId}`)
-    );
-    if (existingFile) {
-      return existingFile;
-    }
-
-    // Download the image
-    let buffer: ArrayBuffer;
-
-    // Check if this is a Hoarder asset URL by checking if it's from the same domain
-    const apiDomain = new URL(settings.apiEndpoint).origin;
-    if (url.startsWith(apiDomain) && client) {
-      // Use the client's downloadAsset method for Hoarder assets
-      buffer = await client.downloadAsset(assetId);
-    } else {
-      // Use fetch for external URLs
-      const headers: Record<string, string> = {};
-      if (url.startsWith(apiDomain)) {
-        headers["Authorization"] = `Bearer ${settings.apiKey}`;
+    await ensureFolderExists(app, attachFolder);
+    const folderNode = app.vault.getAbstractFileByPath(attachFolder);
+    if (folderNode instanceof TFolder) {
+      for (const child of folderNode.children) {
+        if (child instanceof TFile && child.name.includes(assetId)) {
+          return child.path;
+        }
       }
-
-      const response = await fetch(url, { headers });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-      buffer = await response.arrayBuffer();
     }
-    await app.vault.adapter.writeBinary(filePath, buffer);
+  } catch {
+    // Folder doesn't exist yet — will be created below
+  }
 
+  const assetUrl = `${getServerBase(settings.apiEndpoint)}/api/assets/${assetId}`;
+
+  try {
+    const response = await requestUrl({
+      url: assetUrl,
+      method: "GET",
+      headers: { Authorization: `Bearer ${settings.apiKey}` },
+    });
+
+    if (response.status !== 200) {
+      console.error(`[Hoarder Sync] Asset ${assetId}: HTTP ${response.status}`);
+      return null;
+    }
+
+    const buffer = response.arrayBuffer;
+    if (!buffer || buffer.byteLength === 0) {
+      console.error(`[Hoarder Sync] Asset ${assetId}: empty response`);
+      return null;
+    }
+
+    let ext = detectExtension(buffer);
+    if (ext === ".bin") {
+      ext = extensionFromAssetType(assetTypeHint);
+    }
+
+    await ensureFolderExists(app, attachFolder);
+
+    const filePath = normalizePath(`${attachFolder}/${nameHint}-${assetId}${ext}`);
+    if (app.vault.getAbstractFileByPath(filePath) instanceof TFile) {
+      return filePath;
+    }
+
+    await app.vault.createBinary(filePath, buffer);
     return filePath;
-  } catch (error) {
-    console.error("Error downloading image:", url, error);
+  } catch (err) {
+    console.error(`[Hoarder Sync] Failed to download asset ${assetId}:`, err);
     return null;
   }
 }
 
-function escapeMarkdownPath(path: string): string {
-  // If path contains spaces or other special characters, wrap in angle brackets
-  if (path.includes(" ") || /[<>\[\](){}]/.test(path)) {
-    return `<${path}>`;
-  }
-  return path;
+/** Format a vault path as a YAML-safe wikilink value. */
+function wikilink(filePath: string): string {
+  const fileName = filePath.split("/").pop() || filePath;
+  return `"[[${fileName}]]"`;
 }
 
-const toWikilink = (path: string): string => `"[[${path}]]"`;
+/** Extract the bare filename from a wikilink value. */
+function wikilinkToFilename(wl: string): string {
+  return wl.replace(/^"\[\[/, "").replace(/\]\]"$/, "");
+}
 
+// ─── Main export ────────────────────────────────────────────────────────────
+
+/**
+ * Process all assets for a bookmark: download them locally and return
+ * markdown content (image embeds) and frontmatter entries (wikilinks).
+ */
 export async function processBookmarkAssets(
   app: App,
   bookmark: HoarderBookmark,
   title: string,
   client: HoarderApiClient | null,
   settings: HoarderSettings
-): Promise<{ content: string; frontmatter: AssetFrontmatter | null }> {
+): Promise<AssetResult> {
   let content = "";
-  const fm: AssetFrontmatter = {};
+  const frontmatter: AssetFrontmatter = {};
+  const additional: string[] = [];
 
-  // Handle images for asset type bookmarks
-  if (bookmark.content.type === "asset" && bookmark.content.assetType === "image") {
-    if (bookmark.content.assetId) {
-      const assetUrl = getAssetUrl(bookmark.content.assetId, client, settings);
-      let imagePath: string | null = null;
-      if (settings.downloadAssets) {
-        imagePath = await downloadImage(
-          app,
-          assetUrl,
-          bookmark.content.assetId,
-          title,
-          client,
-          settings
-        );
-      }
-      if (imagePath) {
-        content += `\n![${title}](${escapeMarkdownPath(imagePath)})\n`;
-        fm.image = toWikilink(imagePath);
-      } else {
-        content += `\n![${title}](${escapeMarkdownPath(assetUrl)})\n`;
-      }
-    } else if (bookmark.content.sourceUrl) {
-      content += `\n![${title}](${escapeMarkdownPath(bookmark.content.sourceUrl)})\n`;
-      // No local path -> no wikilink in frontmatter
-    }
-  } else if (bookmark.content.type === "link") {
-    // For link types, handle all available assets
-    const assetIds: string[] = [];
-    const assetLabels: string[] = [];
+  const bContent = bookmark?.content;
+  if (!bContent) {
+    return { content, frontmatter: null };
+  }
 
-    // Collect all asset IDs and their labels
-    if (bookmark.content.imageAssetId) {
-      assetIds.push(bookmark.content.imageAssetId);
-      assetLabels.push("Banner Image");
-    }
-    if (bookmark.content.screenshotAssetId) {
-      assetIds.push(bookmark.content.screenshotAssetId);
-      assetLabels.push("Screenshot");
-    }
-    if (bookmark.content.fullPageArchiveAssetId) {
-      assetIds.push(bookmark.content.fullPageArchiveAssetId);
-      assetLabels.push("Full Page Archive");
-    }
-    if (bookmark.content.videoAssetId) {
-      assetIds.push(bookmark.content.videoAssetId);
-      assetLabels.push("Video");
-    }
+  // ── ASSET-type bookmarks (the bookmark IS an image/pdf) ─────────────────
 
-    // Handle each asset
-    for (let i = 0; i < assetIds.length; i++) {
-      const assetId = assetIds[i];
-      const label = assetLabels[i];
-      const assetUrl = getAssetUrl(assetId, client, settings);
+  if (bContent.type === "asset" && bContent.assetId) {
+    const hint = bContent.fileName
+    ? bContent.fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_")
+    : "asset";
 
-      // Handle videos differently - just embed as links, don't download
-      if (label === "Video") {
-        content += `\n[${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
-        // Not downloaded -> no wikilink in frontmatter
-      } else {
-        // Handle images normally
-        let imagePath: string | null = null;
-        if (settings.downloadAssets) {
-          imagePath = await downloadImage(
-            app,
-            assetUrl,
-            assetId,
-            `${title}-${label}`,
-            client,
-            settings
-          );
-        }
-        if (imagePath) {
-          content += `\n![${title} - ${label}](${escapeMarkdownPath(imagePath)})\n`;
-          if (label === "Banner Image") {
-            fm.banner = toWikilink(imagePath);
-          } else if (label === "Screenshot") {
-            fm.screenshot = toWikilink(imagePath);
-          } else if (label === "Full Page Archive") {
-            fm.full_page_archive = toWikilink(imagePath);
-          }
-        } else {
-          content += `\n![${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
-        }
-      }
-    }
-
-    // Handle external image URL if no asset IDs but imageUrl exists
-    if (assetIds.length === 0 && bookmark.content.imageUrl) {
-      content += `\n![${title}](${escapeMarkdownPath(bookmark.content.imageUrl)})\n`;
-      // No local path -> no wikilink in frontmatter
+    const localPath = await downloadAsset(
+      app, settings, bContent.assetId, bContent.assetType || "image", hint
+    );
+    if (localPath) {
+      frontmatter.image = wikilink(localPath);
+      content += `\n![[${localPath.split("/").pop()}]]\n`;
     }
   }
 
-  // Handle any additional assets from the bookmark.assets array
-  if (bookmark.assets && bookmark.assets.length > 0) {
-    const processedAssetIds = new Set<string>();
+  // ── Process the bookmark's `assets` array ───────────────────────────────
+  //
+  // Each entry: { id: string, assetType: string }
+  // assetType values: "screenshot", "bannerImage", "fullPageArchive",
+  //   "bookmarkAsset", "assetScreenshot", "videoAsset", etc.
 
-    // Track which assets we've already processed from content fields
-    if (bookmark.content.type === "asset" && bookmark.content.assetId) {
-      processedAssetIds.add(bookmark.content.assetId);
+  for (const asset of bookmark.assets ?? []) {
+    if (!asset.id) continue;
+
+    const assetType = (asset.assetType ?? "").toLowerCase();
+
+    let hint = "attachment";
+    if (assetType.includes("screenshot")) hint = "screenshot";
+    else if (assetType.includes("banner") || assetType.includes("image")) hint = "banner";
+    else if (assetType.includes("fullpage") || assetType.includes("archive")) hint = "archive";
+    else if (assetType.includes("video")) hint = "video";
+    else if (assetType.includes("bookmark") || assetType.includes("asset")) hint = "asset";
+
+    const localPath = await downloadAsset(app, settings, asset.id, assetType, hint);
+    if (!localPath) continue;
+
+    const link = wikilink(localPath);
+
+    if (assetType === "screenshot") {
+      frontmatter.screenshot ??= link;
+      if (frontmatter.screenshot !== link) additional.push(link);
+    } else if (assetType === "bannerimage" || assetType === "banner_image") {
+      frontmatter.banner ??= link;
+      frontmatter.image ??= link;
+      if (frontmatter.banner !== link) additional.push(link);
+    } else if (assetType.includes("fullpage") || assetType.includes("archive")) {
+      frontmatter.full_page_archive ??= link;
+      if (frontmatter.full_page_archive !== link) additional.push(link);
+    } else if (assetType.includes("video")) {
+      frontmatter.video ??= link;
+      if (frontmatter.video !== link) additional.push(link);
+    } else {
+      additional.push(link);
     }
-    if (bookmark.content.type === "link") {
-      if (bookmark.content.imageAssetId) processedAssetIds.add(bookmark.content.imageAssetId);
-      if (bookmark.content.screenshotAssetId)
-        processedAssetIds.add(bookmark.content.screenshotAssetId);
-      if (bookmark.content.fullPageArchiveAssetId)
-        processedAssetIds.add(bookmark.content.fullPageArchiveAssetId);
-      if (bookmark.content.videoAssetId) processedAssetIds.add(bookmark.content.videoAssetId);
+  }
+
+  // ── Fallback: content-level asset IDs ───────────────────────────────────
+  // Older Karakeep versions store asset IDs directly on the content object
+  // in addition to the assets array. Only fetch if not already covered.
+
+  if (bContent.type === "link") {
+    const assetIds = new Set((bookmark.assets ?? []).map((a) => a.id));
+
+    if (!frontmatter.screenshot && bContent.screenshotAssetId && !assetIds.has(bContent.screenshotAssetId)) {
+      const localPath = await downloadAsset(app, settings, bContent.screenshotAssetId, "screenshot", "screenshot");
+      if (localPath) frontmatter.screenshot = wikilink(localPath);
     }
 
-    // Process any remaining assets
-    for (const asset of bookmark.assets) {
-      if (!processedAssetIds.has(asset.id)) {
-        const assetUrl = getAssetUrl(asset.id, client, settings);
-        const label = asset.assetType === "image" ? "Additional Image" : asset.assetType;
+    if (!frontmatter.banner && !frontmatter.image && bContent.imageAssetId && !assetIds.has(bContent.imageAssetId)) {
+      const localPath = await downloadAsset(app, settings, bContent.imageAssetId, "bannerimage", "banner");
+      if (localPath) {
+        frontmatter.banner = wikilink(localPath);
+        frontmatter.image = wikilink(localPath);
+      }
+    }
 
-        if (asset.assetType === "video") {
-          content += `\n[${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
-          // Not downloaded -> no wikilink in frontmatter
-        } else {
-          let imagePath: string | null = null;
-          if (settings.downloadAssets) {
-            imagePath = await downloadImage(
-              app,
-              assetUrl,
-              asset.id,
-              `${title}-${label}`,
-              client,
-              settings
-            );
-          }
-          if (imagePath) {
-            content += `\n![${title} - ${label}](${escapeMarkdownPath(imagePath)})\n`;
-            fm.additional = fm.additional || [];
-            fm.additional.push(toWikilink(imagePath));
-          } else {
-            content += `\n![${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
-          }
-        }
+    // External imageUrl fallback — only if no Karakeep-hosted image was found
+    if (!frontmatter.image && !frontmatter.banner && bContent.imageUrl) {
+      const imgUrl = bContent.imageUrl;
+      if (!imgUrl.includes("/api/assets/") && !imgUrl.includes("/_next/image")) {
+        frontmatter.image = `"${imgUrl}"`;
       }
     }
   }
 
-  return { content, frontmatter: Object.keys(fm).length > 0 ? fm : null };
+  // ── Markdown body: embed the most relevant image ────────────────────────
+
+  if (bContent.type === "link") {
+    if (frontmatter.banner) {
+      content += `\n![[${wikilinkToFilename(frontmatter.banner)}]]\n`;
+    } else if (frontmatter.screenshot) {
+      content += `\n![[${wikilinkToFilename(frontmatter.screenshot)}]]\n`;
+    }
+  }
+
+  if (additional.length > 0) {
+    frontmatter.additional = additional;
+  }
+
+  const hasFrontmatter =
+  frontmatter.image || frontmatter.banner || frontmatter.screenshot ||
+  frontmatter.full_page_archive || frontmatter.video ||
+  (frontmatter.additional && frontmatter.additional.length > 0);
+
+  return {
+    content,
+    frontmatter: hasFrontmatter ? frontmatter : null,
+  };
 }
