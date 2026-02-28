@@ -2,7 +2,8 @@
  * Sanitizes a tag string to conform to Obsidian's tag requirements.
  *
  * Obsidian tag rules:
- * - Allowed characters: letters, numbers, underscore (_), hyphen (-), forward slash (/)
+ * - Allowed characters: Unicode letters (including CJK/Chinese/Japanese/Korean),
+ *   numbers, underscore (_), hyphen (-), forward slash (/)
  * - Must contain at least one non-numerical character
  * - No blank spaces (converted to hyphens)
  * - Case-insensitive
@@ -20,8 +21,11 @@ export function sanitizeTag(tag: string): string | null {
   // Replace spaces with hyphens (kebab-case)
   sanitized = sanitized.replace(/\s+/g, "-");
 
-  // Remove any characters that aren't letters, numbers, underscore, hyphen, or forward slash
-  sanitized = sanitized.replace(/[^a-zA-Z0-9_\-/]/g, "");
+  // Remove any characters that aren't Unicode letters (including CJK), numbers,
+  // underscore, hyphen, or forward slash.
+  // \p{L} matches any Unicode letter (Latin, CJK, Cyrillic, Arabic, etc.)
+  // \p{N} matches any Unicode number
+  sanitized = sanitized.replace(/[^\p{L}\p{N}_\-/]/gu, "");
 
   // Return null if after sanitization we have an empty string
   if (!sanitized) return null;
