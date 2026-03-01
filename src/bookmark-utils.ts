@@ -29,13 +29,14 @@ function isDirtyTitle(title: string): boolean {
  *
  * Priority order:
  * 1. bookmark.title (if present)
- * 2. For links: content.title (if not dirty), then URL parsing
+ * 2. For links: content.title (if not dirty), then summary, then URL parsing
  * 3. For text: first line (truncated if needed)
  * 4. For assets: fileName or sourceUrl parsing
  * 5. Fallback: "Bookmark-{id}-{date}"
  *
  * When content.title looks like body text (dirty title, e.g. WeChat articles
- * published without a title), the function skips it and falls back to URL parsing.
+ * published without a title), the function tries to extract a title from the
+ * AI-generated summary before falling back to URL parsing.
  *
  * @param bookmark - The bookmark object
  * @returns A title string suitable for use as a filename
@@ -48,9 +49,14 @@ export function getBookmarkTitle(bookmark: HoarderBookmark): string {
 
   // Try content based on type
   if (bookmark.content.type === "link") {
-    // For links, try content title, then URL
+    // For links, try content title, then summary, then URL
     if (bookmark.content.title && !isDirtyTitle(bookmark.content.title)) {
       return bookmark.content.title;
+    }
+    // content.title is dirty or missing — try summary
+    if (bookmark.summary) {
+      const summaryTitle = extractTitleFromSummary(bookmark.summary);
+      if (summaryTitle) return summaryTitle;
     }
     if (bookmark.content.url) {
       return extractTitleFromUrl(bookmark.content.url);
@@ -72,6 +78,37 @@ export function getBookmarkTitle(bookmark: HoarderBookmark): string {
 
   // Fallback to ID with timestamp
   return `Bookmark-${bookmark.id}-${new Date(bookmark.createdAt).toISOString().split("T")[0]}`;
+}
+
+/**
+ * Extracts a title from an AI-generated summary by finding the first bold
+ * heading line (**heading**) and returning the content line that follows it.
+ * Handles two common formats:
+ *   - "**heading**\ncontent"  (content on next line)
+ *   - "**heading**: content"  (content on same line after colon)
+ *
+ * @param summary - The summary string from Karakeep
+ * @returns The extracted title text, or null if not found
+ */
+function extractTitleFromSummary(summary: string): string | null {
+  const lines = summary.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Match "**heading**: content" — content on same line
+    const inlineMatch = line.match(/^\*\*.+?\*\*[：:]\s*(.+)$/);
+    if (inlineMatch) {
+      const text = inlineMatch[1].trim();
+      if (text.length > 0 && text.length <= 80) return text;
+    }
+    // Match "**heading**" — content on next line
+    if (/^\*\*.+?\*\*$/.test(line) && i + 1 < lines.length) {
+      const nextLine = lines[i + 1];
+      if (!/^\*\*/.test(nextLine) && nextLine.length > 0 && nextLine.length <= 80) {
+        return nextLine;
+      }
+    }
+  }
+  return null;
 }
 
 /**
