@@ -109,6 +109,10 @@ describe("escapeYaml", () => {
     it("should use block scalar for backticks", () => {
       expect(escapeYaml("`code`")).toMatch(/^\|/);
     });
+
+    it("should use block scalar for ampersands", () => {
+      expect(escapeYaml("&anchor")).toMatch(/^\|/);
+    });
   });
 
   describe("quote handling", () => {
@@ -130,6 +134,14 @@ describe("escapeYaml", () => {
 
     it("should handle trailing tabs with quotes", () => {
       expect(escapeYaml("text\t")).toBe('"text\t"');
+    });
+
+    it("should wrap whitespace-only strings in double quotes", () => {
+      expect(escapeYaml("  ")).toBe('"  "');
+    });
+
+    it("should wrap in single quotes when string contains double quotes even if also has single quotes", () => {
+      expect(escapeYaml("it's a \"test\"")).toBe("'it's a \"test\"'");
     });
   });
 
@@ -297,3 +309,4 @@ describe("escapeMarkdownPath", () => {
     });
   });
 });
+

@@ -25,7 +25,7 @@ function getAssetUrl(
   return `${baseUrl}/assets/${assetId}`;
 }
 
-function sanitizeAssetFileName(title: string): string {
+export function sanitizeAssetFileName(title: string): string {
   // Sanitize the title
   let sanitizedTitle = title
     .replace(/[\\/:*?"<>|]/g, "-") // Replace invalid characters with dash

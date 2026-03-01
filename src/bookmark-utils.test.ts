@@ -325,4 +325,46 @@ describe("getBookmarkTitle", () => {
       expect(getBookmarkTitle(bookmark)).toBe("- [ ] Buy groceries");
     });
   });
+
+  describe("malformed and unusual URLs", () => {
+    it("should return URL as-is when parsing fails", () => {
+      const bookmark = {
+        ...baseBookmark,
+        content: { type: "link" as const, url: "not a valid url" },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toBe("not a valid url");
+    });
+
+    it("should fall back to hostname for root path URLs", () => {
+      const bookmark = {
+        ...baseBookmark,
+        content: { type: "link" as const, url: "https://example.com/" },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toBe("example.com");
+    });
+
+    it("should strip www from hostname fallback", () => {
+      const bookmark = {
+        ...baseBookmark,
+        content: { type: "link" as const, url: "https://www.example.com" },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toBe("example.com");
+    });
+
+    it("should use fallback ID when link has no url and no title", () => {
+      const bookmark = {
+        ...baseBookmark,
+        content: { type: "link" as const },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toMatch(/^Bookmark-test-id-123-/);
+    });
+
+    it("should use fallback ID when text content is empty", () => {
+      const bookmark = {
+        ...baseBookmark,
+        content: { type: "text" as const, text: "" },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toMatch(/^Bookmark-test-id-123-/);
+    });
+  });
 });
