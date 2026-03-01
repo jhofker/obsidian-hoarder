@@ -325,4 +325,109 @@ describe("getBookmarkTitle", () => {
       expect(getBookmarkTitle(bookmark)).toBe("- [ ] Buy groceries");
     });
   });
+
+  describe("dirty title detection", () => {
+    it("should use content.title when it is a normal short title", () => {
+      const bookmark = {
+        ...baseBookmark,
+        content: {
+          type: "link" as const,
+          url: "https://mp.weixin.qq.com/s/abc123",
+          title: "为什么 OpenClaw 火了？",
+        },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toBe("为什么 OpenClaw 火了？");
+    });
+
+    it("should fall back to URL when content.title exceeds 80 characters", () => {
+      const dirtyTitle =
+        "openClaw 为什么火以及他对软件领域最大的意义在哪呢？\n其实2年前就有 openClaw 这类 Agent，只是没火。为什么是 openClaw 火了呢？";
+      const bookmark = {
+        ...baseBookmark,
+        content: {
+          type: "link" as const,
+          url: "https://mp.weixin.qq.com/s/MBhALMlL6MlUnOHlqlNtHQ",
+          title: dirtyTitle,
+        },
+      } as HoarderBookmark;
+      // Should fall back to URL path, not return the body text as title
+      const result = getBookmarkTitle(bookmark);
+      expect(result).not.toBe(dirtyTitle);
+      expect(result.length).toBeLessThan(dirtyTitle.length);
+    });
+
+    it("should fall back to URL when content.title contains multiple sentences", () => {
+      const bookmark = {
+        ...baseBookmark,
+        content: {
+          type: "link" as const,
+          url: "https://example.com/article",
+          title: "第一句话。第二句话。第三句话。",
+        },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toBe("article");
+    });
+
+    it("should keep a title with exactly one sentence-ending punctuation mark", () => {
+      const bookmark = {
+        ...baseBookmark,
+        content: {
+          type: "link" as const,
+          url: "https://example.com/article",
+          title: "这篇文章改变了我对 AI 的看法！",
+        },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toBe("这篇文章改变了我对 AI 的看法！");
+    });
+
+    it("should fall back to URL when content.title contains multiple English sentences", () => {
+      const bookmark = {
+        ...baseBookmark,
+        content: {
+          type: "link" as const,
+          url: "https://example.com/article",
+          title: "This is the first sentence. This is the second sentence. And a third one.",
+        },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toBe("article");
+    });
+
+    it("should keep a title with exactly one English sentence-ending punctuation mark", () => {
+      const bookmark = {
+        ...baseBookmark,
+        content: {
+          type: "link" as const,
+          url: "https://example.com/article",
+          title: "Why did OpenClaw blow up?",
+        },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toBe("Why did OpenClaw blow up?");
+    });
+
+    it("should keep a title with exactly 80 characters", () => {
+      const title = "a".repeat(80);
+      const bookmark = {
+        ...baseBookmark,
+        content: {
+          type: "link" as const,
+          url: "https://example.com/article",
+          title,
+        },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toBe(title);
+    });
+
+    it("should treat a title with 81 characters as dirty and fall back to URL", () => {
+      const title = "a".repeat(81);
+      const bookmark = {
+        ...baseBookmark,
+        content: {
+          type: "link" as const,
+          url: "https://example.com/article",
+          title,
+        },
+      } as HoarderBookmark;
+      expect(getBookmarkTitle(bookmark)).toBe("article");
+    });
+  });
 });
