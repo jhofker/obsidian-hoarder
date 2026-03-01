@@ -14,9 +14,14 @@ import { HoarderBookmark } from "./hoarder-client";
  */
 function isDirtyTitle(title: string): boolean {
   if (title.length > 80) return true;
-  // Count sentence-ending punctuation marks
-  const sentenceEnders = title.match(/[。！？!?]/g);
-  return sentenceEnders !== null && sentenceEnders.length > 1;
+  // Count sentence-ending punctuation marks (Chinese and English)
+  // For English periods, only count ". " followed by an uppercase letter to avoid
+  // false positives from version numbers (v1.2.3) or domains (example.com)
+  const chineseSentenceEnders = title.match(/[。！？]/g);
+  const englishSentenceEnders = title.match(/[!?]|(?<=\. )[A-Z]/g);
+  const total =
+    (chineseSentenceEnders?.length ?? 0) + (englishSentenceEnders?.length ?? 0);
+  return total > 1;
 }
 
 /**
