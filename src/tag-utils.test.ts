@@ -127,10 +127,23 @@ describe("sanitizeTag", () => {
       expect(sanitizeTag(longTag)).toBe(longTag);
     });
 
-    it("should handle unicode characters by removing them", () => {
+    it("should preserve Unicode letters but remove emoji and symbols", () => {
       expect(sanitizeTag("tag🚀emoji")).toBe("tagemoji");
-      expect(sanitizeTag("café")).toBe("caf");
-      expect(sanitizeTag("日本語")).toBe(null);
+      expect(sanitizeTag("café")).toBe("café");
+      expect(sanitizeTag("日本語")).toBe("日本語");
+    });
+
+    it("should preserve Chinese (CJK) tags", () => {
+      expect(sanitizeTag("代码优化")).toBe("代码优化");
+      expect(sanitizeTag("AI技术")).toBe("AI技术");
+      expect(sanitizeTag("性能工程")).toBe("性能工程");
+      expect(sanitizeTag("人工智能")).toBe("人工智能");
+    });
+
+    it("should preserve mixed Chinese and ASCII tags", () => {
+      expect(sanitizeTag("AI抗性技术评估")).toBe("AI抗性技术评估");
+      expect(sanitizeTag("web开发")).toBe("web开发");
+      expect(sanitizeTag("前端/React")).toBe("前端/React");
     });
 
     it("should handle mixed case", () => {

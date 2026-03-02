@@ -248,6 +248,11 @@ export async function processBookmarkAssets(
     // Process any remaining assets
     for (const asset of bookmark.assets) {
       if (!processedAssetIds.has(asset.id)) {
+        // Skip non-visual assets - these are stored content/data files, not embeddable media
+        if (asset.assetType === "linkHtmlContent") {
+          continue;
+        }
+
         const assetUrl = getAssetUrl(asset.id, client, settings);
         const label = asset.assetType === "image" ? "Additional Image" : asset.assetType;
 
