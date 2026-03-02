@@ -34,8 +34,8 @@ export default class HoarderPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
-    // Initialize the SDK client
-    this.initializeClient();
+    // Initialize the SDK client (async so Keychain can be read)
+    await this.initializeClient();
 
     // Add settings tab
     this.addSettingTab(new HoarderSettingTab(this.app, this));
@@ -90,12 +90,59 @@ export default class HoarderPlugin extends Plugin {
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    // One-time migration: move plain apiKey into Obsidian Keychain and set apiKeySecretName
+    const storage = (this.app as unknown as { secretStorage?: Record<string, unknown> })
+      ?.secretStorage;
+    const setSecretFn =
+      storage &&
+      (typeof (storage as { setSecret?: (k: string, v: string) => Promise<void> }).setSecret ===
+        "function"
+        ? (storage as { setSecret: (k: string, v: string) => Promise<void> }).setSecret.bind(storage)
+        : typeof (storage as { set?: (k: string, v: string) => Promise<void> }).set === "function"
+          ? (storage as { set: (k: string, v: string) => Promise<void> }).set.bind(storage)
+          : null);
+    if (
+      this.settings.apiKey &&
+      !this.settings.apiKeySecretName &&
+      setSecretFn
+    ) {
+      try {
+        const secretName = "hoarder-sync-karakeep-api-key";
+        await setSecretFn(secretName, this.settings.apiKey);
+        this.settings.apiKeySecretName = secretName;
+        this.settings.apiKey = "";
+        await this.saveData(this.settings);
+      } catch (migErr) {
+        throw migErr;
+      }
+    }
+  }
+
+  /** Resolve API key from Keychain (apiKeySecretName) or fallback to legacy settings.apiKey */
+  async getResolvedApiKey(): Promise<string> {
+    const storage = (this.app as unknown as { secretStorage?: Record<string, unknown> })
+      ?.secretStorage;
+    const getSecretFn =
+      storage &&
+      (typeof (storage as { getSecret?: (k: string) => Promise<string | undefined> }).getSecret ===
+        "function"
+        ? (storage as { getSecret: (k: string) => Promise<string | undefined> }).getSecret.bind(
+            storage
+          )
+        : typeof (storage as { get?: (k: string) => Promise<string | undefined> }).get === "function"
+          ? (storage as { get: (k: string) => Promise<string | undefined> }).get.bind(storage)
+          : null);
+    if (this.settings.apiKeySecretName && getSecretFn) {
+      const value = await getSecretFn(this.settings.apiKeySecretName);
+      return value ?? "";
+    }
+    return this.settings.apiKey ?? "";
   }
 
   async saveSettings() {
     await this.saveData(this.settings);
     // Reinitialize client when settings change
-    this.initializeClient();
+    await this.initializeClient();
   }
 
   startPeriodicSync() {
@@ -330,7 +377,9 @@ export default class HoarderPlugin extends Plugin {
       return { success: false, message: "Sync already in progress" };
     }
 
-    if (!this.settings.apiKey) {
+    // Use resolved key (Keychain or legacy apiKey)
+    const apiKey = await this.getResolvedApiKey();
+    if (!apiKey) {
       console.log("[Hoarder] API key not configured");
       return { success: false, message: "Hoarder API key not configured" };
     }
@@ -520,7 +569,12 @@ export default class HoarderPlugin extends Plugin {
               }
 
               // Generate new content and compare with existing
-              const newContent = await this.formatBookmarkAsMarkdown(bookmark, title, highlights);
+              const newContent = await this.formatBookmarkAsMarkdown(
+                bookmark,
+                title,
+                highlights,
+                apiKey
+              );
               const existingContent = await this.app.vault.adapter.read(fileName);
 
               if (existingContent !== newContent) {
@@ -533,7 +587,12 @@ export default class HoarderPlugin extends Plugin {
               }
             }
           } else {
-            const content = await this.formatBookmarkAsMarkdown(bookmark, title, highlights);
+            const content = await this.formatBookmarkAsMarkdown(
+              bookmark,
+              title,
+              highlights,
+              apiKey
+            );
             await this.app.vault.create(fileName, content);
             totalBookmarks++;
           }
@@ -582,7 +641,8 @@ export default class HoarderPlugin extends Plugin {
   async formatBookmarkAsMarkdown(
     bookmark: HoarderBookmark,
     title: string,
-    highlights?: HoarderHighlight[]
+    highlights?: HoarderHighlight[],
+    resolvedApiKey?: string
   ): Promise<string> {
     const url =
       bookmark.content.type === "link" ? bookmark.content.url : bookmark.content.sourceUrl;
@@ -591,13 +651,15 @@ export default class HoarderPlugin extends Plugin {
     const rawTags = bookmark.tags.map((tag) => tag.name);
     const tags = sanitizeTags(rawTags);
 
-    // Handle images and assets first to collect frontmatter entries
+    // Use resolved API key for asset requests when provided (Keychain or legacy)
+    const settingsForAssets =
+      resolvedApiKey != null ? { ...this.settings, apiKey: resolvedApiKey } : this.settings;
     const { content: assetContent, frontmatter: assetsFm } = await processBookmarkAssets(
       this.app,
       bookmark,
       title,
       this.client,
-      this.settings
+      settingsForAssets
     );
 
     // Build top-level asset YAML entries (wikilinks only)
@@ -828,13 +890,14 @@ ${assetsYaml}
     }
   }
 
-  private initializeClient() {
-    if (!this.settings.apiKey || !this.settings.apiEndpoint) {
+  private async initializeClient() {
+    const apiKey = await this.getResolvedApiKey();
+    if (!apiKey || !this.settings.apiEndpoint) {
       this.client = null;
     } else {
       this.client = new HoarderApiClient(
         this.settings.apiEndpoint,
-        this.settings.apiKey,
+        apiKey,
         this.settings.useObsidianRequest
       );
     }
