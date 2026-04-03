@@ -1,5 +1,6 @@
 import { App } from "obsidian";
 
+import { escapeAltText, escapeMarkdownPath } from "./formatting-utils";
 import { HoarderApiClient, HoarderBookmark } from "./hoarder-client";
 import { HoarderSettings } from "./settings";
 
@@ -8,9 +9,73 @@ export type AssetFrontmatter = {
   banner?: string; // wikilink [[path]]
   screenshot?: string; // wikilink [[path]]
   full_page_archive?: string; // wikilink [[path]]
+  pdf_archive?: string; // wikilink [[path]]
   video?: string; // wikilink [[path]] (only if downloaded, typically omitted)
   additional?: string[]; // array of wikilinks
 };
+
+const CONTENT_TYPE_TO_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/svg+xml": "svg",
+  "application/pdf": "pdf",
+  "text/html": "html",
+  "multipart/related": "mhtml",
+  "application/x-mimearchive": "mhtml",
+  "message/rfc822": "mhtml",
+};
+
+const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "svg"]);
+
+const SUPPORTED_EXTENSIONS = new Set([...IMAGE_EXTENSIONS, "pdf", "html", "mhtml"]);
+
+/**
+ * Determines the file extension for a downloaded asset.
+ *
+ * Priority: Content-Type header > asset label mapping > URL extension > "jpg" default
+ */
+export function resolveAssetExtension(
+  contentType: string | null,
+  assetLabel: string,
+  url: string
+): string {
+  if (contentType) {
+    const mimeType = contentType.split(";")[0].trim().toLowerCase();
+    const ext = CONTENT_TYPE_TO_EXT[mimeType];
+    if (ext) return ext;
+  }
+
+  const labelLower = assetLabel.toLowerCase();
+  if (labelLower.includes("pdf")) return "pdf";
+  if (labelLower.includes("full page archive")) return "mhtml";
+  if (labelLower.includes("screenshot")) return "png";
+
+  const urlExt = url.split("?")[0].split(".").pop()?.toLowerCase();
+  if (urlExt && SUPPORTED_EXTENSIONS.has(urlExt)) return urlExt;
+
+  return "jpg";
+}
+
+export function isImageExtension(ext: string): boolean {
+  return IMAGE_EXTENSIONS.has(ext.toLowerCase());
+}
+
+/**
+ * Returns true if the existing file can be reused (i.e., its extension is already
+ * correct for the expected asset type). Images are interchangeable (a .png banner
+ * doesn't need re-download just because we'd default to .jpg), but non-image types
+ * must match exactly.
+ */
+function canReuseExistingFile(existingFile: string, assetLabel: string, url: string): boolean {
+  const existingExt = existingFile.split(".").pop()?.toLowerCase() || "";
+  const expectedFromLabel = resolveAssetExtension(null, assetLabel, url);
+  if (isImageExtension(existingExt) && isImageExtension(expectedFromLabel)) {
+    return true;
+  }
+  return existingExt === expectedFromLabel;
+}
 
 function getAssetUrl(
   assetId: string,
@@ -20,31 +85,24 @@ function getAssetUrl(
   if (client) {
     return client.getAssetUrl(assetId);
   }
-  // Fallback if client is not initialized
   const baseUrl = settings.apiEndpoint.replace(/\/v1\/?$/, "");
   return `${baseUrl}/assets/${assetId}`;
 }
 
 export function sanitizeAssetFileName(title: string): string {
-  // Sanitize the title
   let sanitizedTitle = title
-    .replace(/[\\/:*?"<>|]/g, "-") // Replace invalid characters with dash
-    .replace(/\s+/g, "-") // Replace spaces with dash
-    .replace(/-+/g, "-") // Replace multiple dashes with single dash
-    .replace(/^-|-$/g, ""); // Remove dashes from start and end
+    .replace(/[^a-zA-Z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 
-  // Use a shorter max length for asset filenames
   const maxTitleLength = 30;
 
   if (sanitizedTitle.length > maxTitleLength) {
-    // If title is too long, try to cut at a word boundary
     const truncated = sanitizedTitle.substring(0, maxTitleLength);
     const lastDash = truncated.lastIndexOf("-");
     if (lastDash > maxTitleLength / 2) {
-      // If we can find a reasonable word break, use it
       sanitizedTitle = truncated.substring(0, lastDash);
     } else {
-      // Otherwise just truncate
       sanitizedTitle = truncated;
     }
   }
@@ -52,50 +110,46 @@ export function sanitizeAssetFileName(title: string): string {
   return sanitizedTitle;
 }
 
-async function downloadImage(
+async function downloadAssetFile(
   app: App,
   url: string,
   assetId: string,
   title: string,
+  assetLabel: string,
   client: HoarderApiClient | null,
-  settings: HoarderSettings
+  settings: HoarderSettings,
+  existingFiles?: string[]
 ): Promise<string | null> {
   try {
-    // Create attachments folder if it doesn't exist
     if (!(await app.vault.adapter.exists(settings.attachmentsFolder))) {
       await app.vault.createFolder(settings.attachmentsFolder);
     }
 
-    // Get file extension from URL or default to jpg
-    const extension = url.split(".").pop()?.toLowerCase() || "jpg";
-    const safeExtension = ["jpg", "jpeg", "png", "gif", "webp"].includes(extension)
-      ? extension
-      : "jpg";
-
-    // Create a safe filename using just the assetId and a short title
-    const safeTitle = sanitizeAssetFileName(title);
-    const fileName = `${assetId}${safeTitle ? "-" + safeTitle : ""}.${safeExtension}`;
-    const filePath = `${settings.attachmentsFolder}/${fileName}`;
-
-    // Check if file already exists with any extension
-    const files = await app.vault.adapter.list(settings.attachmentsFolder);
-    const existingFile = files.files.find((filePathItem: string) =>
-      filePathItem.startsWith(`${settings.attachmentsFolder}/${assetId}`)
+    // Find existing file for this asset ID (from pre-fetched listing or fresh query)
+    let fileList = existingFiles;
+    if (!fileList) {
+      const listing = await app.vault.adapter.list(settings.attachmentsFolder);
+      fileList = listing.files;
+    }
+    const existingFile = fileList.find((f: string) =>
+      f.startsWith(`${settings.attachmentsFolder}/${assetId}`)
     );
-    if (existingFile) {
+
+    // If existing file has a correct extension, skip the download entirely
+    if (existingFile && canReuseExistingFile(existingFile, assetLabel, url)) {
       return existingFile;
     }
 
-    // Download the image
+    // Download the asset
     let buffer: ArrayBuffer;
+    let contentType: string | null = null;
 
-    // Check if this is a Hoarder asset URL by checking if it's from the same domain
     const apiDomain = new URL(settings.apiEndpoint).origin;
     if (url.startsWith(apiDomain) && client) {
-      // Use the client's downloadAsset method for Hoarder assets
-      buffer = await client.downloadAsset(assetId);
+      const result = await client.downloadAsset(assetId);
+      buffer = result.buffer;
+      contentType = result.contentType;
     } else {
-      // Use fetch for external URLs
       const headers: Record<string, string> = {};
       if (url.startsWith(apiDomain)) {
         headers["Authorization"] = `Bearer ${settings.apiKey}`;
@@ -105,25 +159,57 @@ async function downloadImage(
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       buffer = await response.arrayBuffer();
+      contentType = response.headers.get("content-type");
     }
+
+    const extension = resolveAssetExtension(contentType, assetLabel, url);
+    const safeTitle = sanitizeAssetFileName(title);
+    const fileName = `${assetId}${safeTitle ? "-" + safeTitle : ""}.${extension}`;
+    const filePath = `${settings.attachmentsFolder}/${fileName}`;
+
     await app.vault.adapter.writeBinary(filePath, buffer);
+
+    // Remove the old file if it had a wrong extension
+    if (existingFile && existingFile !== filePath) {
+      try {
+        await app.vault.adapter.remove(existingFile);
+        console.log(`[Hoarder] Replaced misnamed asset: ${existingFile} -> ${filePath}`);
+      } catch (err) {
+        console.error(`[Hoarder] Failed to remove old asset file: ${existingFile}`, err);
+      }
+    }
 
     return filePath;
   } catch (error) {
-    console.error("Error downloading image:", url, error);
+    console.error("Error downloading asset:", url, error);
     return null;
   }
 }
 
-function escapeMarkdownPath(path: string): string {
-  // If path contains spaces or other special characters, wrap in angle brackets
-  if (path.includes(" ") || /[<>\[\](){}]/.test(path)) {
-    return `<${path}>`;
+function formatAssetEmbed(path: string, altText: string): string {
+  const ext = path.split(".").pop()?.toLowerCase() || "";
+  const safeAlt = escapeAltText(altText);
+  if (ext === "pdf") {
+    return `\n![[${path}]]\n`;
   }
-  return path;
+  if (ext === "html" || ext === "mhtml") {
+    return `\n[${safeAlt}](${escapeMarkdownPath(path)})\n`;
+  }
+  return `\n![${safeAlt}](${escapeMarkdownPath(path)})\n`;
 }
 
 const toWikilink = (path: string): string => `"[[${path}]]"`;
+
+function shouldDownloadAssetType(label: string, settings: HoarderSettings): boolean {
+  if (!settings.downloadAssets) return false;
+
+  const labelLower = label.toLowerCase();
+  if (labelLower.includes("banner")) return settings.downloadBannerImages;
+  if (labelLower.includes("screenshot")) return settings.downloadScreenshots;
+  if (labelLower.includes("full page archive")) return settings.downloadFullPageArchives;
+  if (labelLower.includes("pdf")) return settings.downloadPdfArchives;
+  return true;
+}
 
 export async function processBookmarkAssets(
   app: App,
@@ -135,37 +221,71 @@ export async function processBookmarkAssets(
   let content = "";
   const fm: AssetFrontmatter = {};
 
-  // Handle images for asset type bookmarks
+  // Pre-fetch attachment file listing once for all asset downloads in this bookmark
+  let existingFiles: string[] | undefined;
+  if (settings.downloadAssets) {
+    try {
+      if (await app.vault.adapter.exists(settings.attachmentsFolder)) {
+        const listing = await app.vault.adapter.list(settings.attachmentsFolder);
+        existingFiles = listing.files;
+      }
+    } catch {
+      // Will fall back to per-download listing
+    }
+  }
+
   if (bookmark.content.type === "asset" && bookmark.content.assetType === "image") {
     if (bookmark.content.assetId) {
       const assetUrl = getAssetUrl(bookmark.content.assetId, client, settings);
       let imagePath: string | null = null;
-      if (settings.downloadAssets) {
-        imagePath = await downloadImage(
+      if (shouldDownloadAssetType("Banner Image", settings)) {
+        imagePath = await downloadAssetFile(
           app,
           assetUrl,
           bookmark.content.assetId,
           title,
+          "Banner Image",
           client,
-          settings
+          settings,
+          existingFiles
         );
       }
       if (imagePath) {
-        content += `\n![${title}](${escapeMarkdownPath(imagePath)})\n`;
+        content += formatAssetEmbed(imagePath, title);
         fm.image = toWikilink(imagePath);
       } else {
-        content += `\n![${title}](${escapeMarkdownPath(assetUrl)})\n`;
+        content += `\n![${escapeAltText(title)}](${escapeMarkdownPath(assetUrl)})\n`;
       }
     } else if (bookmark.content.sourceUrl) {
-      content += `\n![${title}](${escapeMarkdownPath(bookmark.content.sourceUrl)})\n`;
-      // No local path -> no wikilink in frontmatter
+      content += `\n![${escapeAltText(title)}](${escapeMarkdownPath(bookmark.content.sourceUrl)})\n`;
+    }
+  } else if (bookmark.content.type === "asset" && bookmark.content.assetType === "pdf") {
+    if (bookmark.content.assetId) {
+      const assetUrl = getAssetUrl(bookmark.content.assetId, client, settings);
+      let pdfPath: string | null = null;
+      if (shouldDownloadAssetType("PDF Archive", settings)) {
+        pdfPath = await downloadAssetFile(
+          app,
+          assetUrl,
+          bookmark.content.assetId,
+          title,
+          "PDF Archive",
+          client,
+          settings,
+          existingFiles
+        );
+      }
+      if (pdfPath) {
+        content += formatAssetEmbed(pdfPath, title);
+        fm.pdf_archive = toWikilink(pdfPath);
+      } else {
+        content += `\n[${escapeAltText(title)} - PDF](${escapeMarkdownPath(assetUrl)})\n`;
+      }
     }
   } else if (bookmark.content.type === "link") {
-    // For link types, handle all available assets
     const assetIds: string[] = [];
     const assetLabels: string[] = [];
 
-    // Collect all asset IDs and their labels
     if (bookmark.content.imageAssetId) {
       assetIds.push(bookmark.content.imageAssetId);
       assetLabels.push("Banner Image");
@@ -183,56 +303,50 @@ export async function processBookmarkAssets(
       assetLabels.push("Video");
     }
 
-    // Handle each asset
     for (let i = 0; i < assetIds.length; i++) {
       const assetId = assetIds[i];
       const label = assetLabels[i];
       const assetUrl = getAssetUrl(assetId, client, settings);
 
-      // Handle videos differently - just embed as links, don't download
       if (label === "Video") {
-        content += `\n[${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
-        // Not downloaded -> no wikilink in frontmatter
+        content += `\n[${escapeAltText(title)} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
       } else {
-        // Handle images normally
-        let imagePath: string | null = null;
-        if (settings.downloadAssets) {
-          imagePath = await downloadImage(
+        let assetPath: string | null = null;
+        if (shouldDownloadAssetType(label, settings)) {
+          assetPath = await downloadAssetFile(
             app,
             assetUrl,
             assetId,
             `${title}-${label}`,
+            label,
             client,
-            settings
+            settings,
+            existingFiles
           );
         }
-        if (imagePath) {
-          content += `\n![${title} - ${label}](${escapeMarkdownPath(imagePath)})\n`;
+        if (assetPath) {
+          content += formatAssetEmbed(assetPath, `${title} - ${label}`);
           if (label === "Banner Image") {
-            fm.banner = toWikilink(imagePath);
+            fm.banner = toWikilink(assetPath);
           } else if (label === "Screenshot") {
-            fm.screenshot = toWikilink(imagePath);
+            fm.screenshot = toWikilink(assetPath);
           } else if (label === "Full Page Archive") {
-            fm.full_page_archive = toWikilink(imagePath);
+            fm.full_page_archive = toWikilink(assetPath);
           }
         } else {
-          content += `\n![${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
+          content += `\n![${escapeAltText(title)} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
         }
       }
     }
 
-    // Handle external image URL if no asset IDs but imageUrl exists
     if (assetIds.length === 0 && bookmark.content.imageUrl) {
-      content += `\n![${title}](${escapeMarkdownPath(bookmark.content.imageUrl)})\n`;
-      // No local path -> no wikilink in frontmatter
+      content += `\n![${escapeAltText(title)}](${escapeMarkdownPath(bookmark.content.imageUrl)})\n`;
     }
   }
 
-  // Handle any additional assets from the bookmark.assets array
   if (bookmark.assets && bookmark.assets.length > 0) {
     const processedAssetIds = new Set<string>();
 
-    // Track which assets we've already processed from content fields
     if (bookmark.content.type === "asset" && bookmark.content.assetId) {
       processedAssetIds.add(bookmark.content.assetId);
     }
@@ -245,38 +359,46 @@ export async function processBookmarkAssets(
       if (bookmark.content.videoAssetId) processedAssetIds.add(bookmark.content.videoAssetId);
     }
 
-    // Process any remaining assets
     for (const asset of bookmark.assets) {
       if (!processedAssetIds.has(asset.id)) {
-        // Skip non-visual assets - these are stored content/data files, not embeddable media
         if (asset.assetType === "linkHtmlContent") {
           continue;
         }
 
         const assetUrl = getAssetUrl(asset.id, client, settings);
-        const label = asset.assetType === "image" ? "Additional Image" : asset.assetType;
+        const label =
+          asset.assetType === "image"
+            ? "Additional Image"
+            : asset.assetType === "pdf"
+              ? "PDF Archive"
+              : asset.assetType;
 
         if (asset.assetType === "video") {
-          content += `\n[${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
-          // Not downloaded -> no wikilink in frontmatter
+          content += `\n[${escapeAltText(title)} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
         } else {
-          let imagePath: string | null = null;
-          if (settings.downloadAssets) {
-            imagePath = await downloadImage(
+          let assetPath: string | null = null;
+          if (shouldDownloadAssetType(label, settings)) {
+            assetPath = await downloadAssetFile(
               app,
               assetUrl,
               asset.id,
               `${title}-${label}`,
+              label,
               client,
-              settings
+              settings,
+              existingFiles
             );
           }
-          if (imagePath) {
-            content += `\n![${title} - ${label}](${escapeMarkdownPath(imagePath)})\n`;
-            fm.additional = fm.additional || [];
-            fm.additional.push(toWikilink(imagePath));
+          if (assetPath) {
+            content += formatAssetEmbed(assetPath, `${title} - ${label}`);
+            if (asset.assetType === "pdf") {
+              fm.pdf_archive = toWikilink(assetPath);
+            } else {
+              fm.additional = fm.additional || [];
+              fm.additional.push(toWikilink(assetPath));
+            }
           } else {
-            content += `\n![${title} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
+            content += `\n![${escapeAltText(title)} - ${label}](${escapeMarkdownPath(assetUrl)})\n`;
           }
         }
       }
