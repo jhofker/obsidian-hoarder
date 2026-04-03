@@ -16,25 +16,29 @@
   },
   "keywords": [
     "obsidian",
+    "karakeep",
     "hoarder",
     "bookmarks"
   ],
   "author": "Jordan Hofker <jhofker@gmail.com>",
   "license": "MIT",
   "devDependencies": {
-    "@trivago/prettier-plugin-sort-imports": "^5",
+    "@trivago/prettier-plugin-sort-imports": "^6",
     "@types/jest": "^30",
-    "@types/node": "^22",
+    "@types/node": "^25",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
     "builtin-modules": "^5",
-    "esbuild": "^0.25",
+    "esbuild": "^0.27",
     "jest": "^30",
-    "obsidian": "^1.10",
+    "obsidian": "^1.12",
     "prettier": "^3",
     "prompt-sync": "^4",
     "ts-jest": "^29",
     "tslib": "^2",
     "typescript": "^5"
+  },
+  "dependencies": {
+    "eta": "^4.5.1"
   }
 }
