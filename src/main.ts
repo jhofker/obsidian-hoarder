@@ -18,7 +18,13 @@ import {
 import { contentHasChanged, extractNotesSection } from "./markdown-utils";
 import { SyncStats, buildSyncMessage } from "./message-utils";
 import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings";
-import { DEFAULT_TEMPLATE, buildTemplateContext, renderWithFallback } from "./template-renderer";
+import {
+  DEFAULT_TEMPLATE,
+  NOTE_BLOCK_END,
+  NOTE_BLOCK_START,
+  buildTemplateContext,
+  renderWithFallback,
+} from "./template-renderer";
 
 export default class HoarderPlugin extends Plugin {
   settings: HoarderSettings;
@@ -164,12 +170,26 @@ export default class HoarderPlugin extends Plugin {
         return { currentNotes: null, originalNotes: null };
       }
 
-      // Read both note values from frontmatter — this is template-independent
       const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      const currentNotes = metadata?.note ?? null;
       const originalNotes = metadata?.original_note ?? null;
+      const content = await this.app.vault.adapter.read(filePath);
 
-      return { currentNotes, originalNotes };
+      // 1. Comment block (custom templates using noteBlock)
+      const blockMatch = content.match(
+        new RegExp(`${NOTE_BLOCK_START}\\n([\\s\\S]*?)\\n${NOTE_BLOCK_END}`)
+      );
+      if (blockMatch) {
+        return { currentNotes: blockMatch[1], originalNotes };
+      }
+
+      // 2. ## Notes section (default template)
+      const sectionNotes = extractNotesSection(content);
+      if (sectionNotes !== null) {
+        return { currentNotes: sectionNotes, originalNotes };
+      }
+
+      // 3. Frontmatter note field (last resort)
+      return { currentNotes: metadata?.note ?? null, originalNotes };
     } catch (error) {
       console.error("Error reading file:", error);
       return { currentNotes: null, originalNotes: null };

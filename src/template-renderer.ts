@@ -14,6 +14,7 @@ export interface TemplateContext {
   created_at: string;
   modified_at: string | null;
   note: string;
+  noteBlock: string;
   summary: string | undefined | null;
   archived: boolean;
   favourited: boolean;
@@ -102,6 +103,13 @@ summary: <%= it.yaml.summary %>
 <% } %>
 [View in Hoarder](<%= it.escapeMarkdownPath(it.hoarder_url) %>)`;
 
+export const NOTE_BLOCK_START = "<!-- karakeep:notes -->";
+export const NOTE_BLOCK_END = "<!-- /karakeep:notes -->";
+
+function wrapNoteBlock(note: string): string {
+  return `${NOTE_BLOCK_START}\n${note}\n${NOTE_BLOCK_END}`;
+}
+
 const eta = new Eta({ autoEscape: false, autoTrim: false });
 
 // Cache compiled templates to avoid recompilation on every render
@@ -154,6 +162,7 @@ export function buildTemplateContext(
     created_at: new Date(bookmark.createdAt).toISOString(),
     modified_at: bookmark.modifiedAt ? new Date(bookmark.modifiedAt).toISOString() : null,
     note: bookmark.note || "",
+    noteBlock: wrapNoteBlock(bookmark.note || ""),
     summary: bookmark.summary,
     archived: bookmark.archived,
     favourited: bookmark.favourited,
@@ -216,6 +225,7 @@ const SAMPLE_CONTEXT: TemplateContext = {
   created_at: "2024-01-15T10:30:00.000Z",
   modified_at: null,
   note: "",
+  noteBlock: wrapNoteBlock(""),
   summary: "A sample summary",
   archived: false,
   favourited: false,

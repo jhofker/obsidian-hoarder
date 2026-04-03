@@ -3,6 +3,7 @@ import { escapeMarkdownPath, escapeYaml } from "./formatting-utils";
 import { HoarderBookmark, HoarderHighlight } from "./hoarder-client";
 import { DEFAULT_SETTINGS, HoarderSettings } from "./settings";
 import { sanitizeTags } from "./tag-utils";
+import { NOTE_BLOCK_START, NOTE_BLOCK_END } from "./template-renderer";
 import {
   DEFAULT_TEMPLATE,
   buildTemplateContext,
@@ -11,8 +12,8 @@ import {
   validateTemplate,
 } from "./template-renderer";
 
-// Reference implementation: the old hard-coded formatBookmarkAsMarkdown logic.
-// Used to verify parity with the DEFAULT_TEMPLATE.
+// Reference implementation of the expected DEFAULT_TEMPLATE output.
+// Used to verify the template produces the correct format.
 function referenceFormat(
   bookmark: HoarderBookmark,
   title: string,
@@ -382,6 +383,21 @@ describe("buildTemplateContext", () => {
     });
     const ctx = buildTemplateContext(bookmark, "Test", [], "", null, makeSettings());
     expect(ctx.content_html).toBe("<p>Full page content</p>");
+  });
+
+  it("should wrap note in comment block markers", () => {
+    const bookmark = makeBookmark({ note: "My editable note" });
+    const ctx = buildTemplateContext(bookmark, "Test", [], "", null, makeSettings());
+    expect(ctx.note).toBe("My editable note");
+    expect(ctx.noteBlock).toBe(
+      `${NOTE_BLOCK_START}\nMy editable note\n${NOTE_BLOCK_END}`
+    );
+  });
+
+  it("should handle empty note in noteBlock", () => {
+    const bookmark = makeBookmark({ note: "" });
+    const ctx = buildTemplateContext(bookmark, "Test", [], "", null, makeSettings());
+    expect(ctx.noteBlock).toBe(`${NOTE_BLOCK_START}\n\n${NOTE_BLOCK_END}`);
   });
 });
 
