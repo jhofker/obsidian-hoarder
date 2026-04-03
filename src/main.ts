@@ -9,17 +9,16 @@ import {
 } from "./deletion-handler";
 import { sanitizeFileName } from "./filename-utils";
 import { shouldIncludeBookmark } from "./filter-utils";
-import { escapeMarkdownPath, escapeYaml } from "./formatting-utils";
 import {
   HoarderApiClient,
   HoarderBookmark,
   HoarderHighlight,
   PaginatedBookmarks,
 } from "./hoarder-client";
-import { extractNotesSection } from "./markdown-utils";
+import { contentHasChanged, extractNotesSection } from "./markdown-utils";
 import { SyncStats, buildSyncMessage } from "./message-utils";
 import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings";
-import { sanitizeTags } from "./tag-utils";
+import { DEFAULT_TEMPLATE, buildTemplateContext, renderWithFallback } from "./template-renderer";
 
 export default class HoarderPlugin extends Plugin {
   settings: HoarderSettings;
@@ -121,11 +120,15 @@ export default class HoarderPlugin extends Plugin {
       throw new Error("Client not initialized");
     }
 
+    const template = this.settings.useCustomTemplate ? this.settings.customTemplate : "";
+    const needsHtmlContent = template.includes("content_html");
+
     return await this.client.getBookmarks({
       limit,
       cursor: cursor || undefined,
       archived: this.settings.excludeArchived ? false : undefined,
       favourited: this.settings.onlyFavorites ? true : undefined,
+      includeContent: needsHtmlContent || undefined,
     });
   }
 
@@ -161,13 +164,9 @@ export default class HoarderPlugin extends Plugin {
         return { currentNotes: null, originalNotes: null };
       }
 
-      const content = await this.app.vault.adapter.read(filePath);
-
-      // Extract notes from the content
-      const currentNotes = extractNotesSection(content);
-
-      // Use MetadataCache to get frontmatter
+      // Read both note values from frontmatter — this is template-independent
       const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      const currentNotes = metadata?.note ?? null;
       const originalNotes = metadata?.original_note ?? null;
 
       return { currentNotes, originalNotes };
@@ -477,7 +476,7 @@ export default class HoarderPlugin extends Plugin {
                 if (originalNotes === null && currentNotes !== null) {
                   console.debug(`[Hoarder] original_note missing for ${fileName}`);
 
-                  // If current notes differ from remote, sync them
+                  // If current notes differ from remote, sync them to Hoarder
                   if (currentNotes !== remoteNotes) {
                     console.log(`[Hoarder] Local notes differ from remote, syncing to Hoarder`);
                     const updated = await this.updateBookmarkInHoarder(bookmark.id, currentNotes);
@@ -485,23 +484,10 @@ export default class HoarderPlugin extends Plugin {
                       updatedInHoarder++;
                       bookmark.note = currentNotes; // Update the bookmark object with local notes
                       this.lastSyncedNotes = currentNotes; // Track this to avoid re-syncing
-
-                      // Now initialize original_note to match the synced version
-                      console.debug(
-                        `[Hoarder] Initializing original_note to synced value for ${fileName}`
-                      );
-                      await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-                        frontmatter["original_note"] = currentNotes;
-                      });
                     }
-                  } else {
-                    // Current notes match remote, only update frontmatter if they're different
-                    // Since currentNotes === remoteNotes, we can skip the frontmatter update entirely
-                    // to avoid changing mtime. The frontmatter will be initialized on the next actual change.
-                    console.debug(
-                      `[Hoarder] Notes match remote, skipping original_note initialization to preserve mtime`
-                    );
                   }
+                  // original_note will be written as part of formatBookmarkAsMarkdown below,
+                  // so no need for a separate processFrontMatter call that would touch mtime
                 } else if (
                   currentNotes !== null &&
                   originalNotes !== null &&
@@ -523,12 +509,12 @@ export default class HoarderPlugin extends Plugin {
               const newContent = await this.formatBookmarkAsMarkdown(bookmark, title, highlights);
               const existingContent = await this.app.vault.adapter.read(fileName);
 
-              if (existingContent !== newContent) {
+              if (contentHasChanged(existingContent, newContent)) {
                 // Content has actually changed, update the file
                 await this.app.vault.adapter.write(fileName, newContent);
                 totalBookmarks++;
               } else {
-                // Content is identical, skip writing to preserve modification time
+                // Content is semantically identical, skip writing to preserve mtime
                 this.skippedFiles++;
               }
             }
@@ -584,14 +570,6 @@ export default class HoarderPlugin extends Plugin {
     title: string,
     highlights?: HoarderHighlight[]
   ): Promise<string> {
-    const url =
-      bookmark.content.type === "link" ? bookmark.content.url : bookmark.content.sourceUrl;
-    const description =
-      bookmark.content.type === "link" ? bookmark.content.description : bookmark.content.text;
-    const rawTags = bookmark.tags.map((tag) => tag.name);
-    const tags = sanitizeTags(rawTags);
-
-    // Handle images and assets first to collect frontmatter entries
     const { content: assetContent, frontmatter: assetsFm } = await processBookmarkAssets(
       this.app,
       bookmark,
@@ -600,105 +578,21 @@ export default class HoarderPlugin extends Plugin {
       this.settings
     );
 
-    // Build top-level asset YAML entries (wikilinks only)
-    let assetsYaml = "";
-    if (assetsFm) {
-      const lines: string[] = [];
-      if (assetsFm.image) lines.push(`image: ${assetsFm.image}`);
-      if (assetsFm.banner) lines.push(`banner: ${assetsFm.banner}`);
-      if (assetsFm.screenshot) lines.push(`screenshot: ${assetsFm.screenshot}`);
-      if (assetsFm.full_page_archive)
-        lines.push(`full_page_archive: ${assetsFm.full_page_archive}`);
-      if (assetsFm.video) lines.push(`video: ${assetsFm.video}`);
-      if (assetsFm.additional && assetsFm.additional.length > 0) {
-        lines.push("additional:");
-        for (const link of assetsFm.additional) {
-          lines.push(`  - ${link}`);
-        }
-      }
-      assetsYaml = lines.join("\n") + "\n";
-    }
+    const context = buildTemplateContext(
+      bookmark,
+      title,
+      highlights,
+      assetContent,
+      assetsFm,
+      this.settings
+    );
 
-    // Build tags YAML - only include if there are valid tags
-    const tagsYaml = tags.length > 0 ? `tags:\n  - ${tags.join("\n  - ")}\n` : "";
+    const template =
+      this.settings.useCustomTemplate && this.settings.customTemplate
+        ? this.settings.customTemplate
+        : DEFAULT_TEMPLATE;
 
-    let content = `---
-bookmark_id: "${bookmark.id}"
-url: ${escapeYaml(url)}
-title: ${escapeYaml(title)}
-date: ${new Date(bookmark.createdAt).toISOString()}
-${bookmark.modifiedAt ? `modified: ${new Date(bookmark.modifiedAt).toISOString()}\n` : ""}${tagsYaml}note: ${escapeYaml(bookmark.note)}
-original_note: ${escapeYaml(bookmark.note)}
-summary: ${escapeYaml(bookmark.summary)}
-${assetsYaml}
----
-
-# ${title}
-`;
-
-    // Append any asset content (images/links embeds)
-    content += assetContent;
-
-    // Add summary if available
-    if (bookmark.summary) {
-      content += `\n## Summary\n\n${bookmark.summary}\n`;
-    }
-
-    // Add description if available
-    if (description) {
-      content += `\n## Description\n\n${description}\n`;
-    }
-
-    // Add highlights if available and enabled
-    if (highlights && highlights.length > 0 && this.settings.syncHighlights) {
-      content += `\n## Highlights\n\n`;
-
-      // Sort highlights by startOffset (position in document)
-      const sortedHighlights = highlights.sort((a, b) => a.startOffset - b.startOffset);
-
-      for (const highlight of sortedHighlights) {
-        const date = new Date(highlight.createdAt).toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        });
-
-        content += `> [!karakeep-${highlight.color}] ${date}\n`;
-
-        // Handle multi-line highlight text by prefixing each line with '> '
-        const highlightLines = highlight.text.split("\n");
-        for (const line of highlightLines) {
-          content += `> ${line}\n`;
-        }
-
-        if (highlight.note && highlight.note.trim()) {
-          content += `>\n`;
-          // Handle multi-line notes by prefixing each line with '> '
-          const noteLines = highlight.note.split("\n");
-          for (let i = 0; i < noteLines.length; i++) {
-            if (i === 0) {
-              content += `> *Note: ${noteLines[i]}*\n`;
-            } else {
-              content += `> *${noteLines[i]}*\n`;
-            }
-          }
-        }
-
-        content += `\n`;
-      }
-    }
-
-    // Always add Notes section
-    content += `\n## Notes\n\n${bookmark.note || ""}\n`;
-
-    // Add link if available (and it's not just an image)
-    if (url && bookmark.content.type !== "asset") {
-      content += `\n[Visit Link](${escapeMarkdownPath(url)})\n`;
-    }
-    const hoarderUrl = `${this.settings.apiEndpoint.replace("/api/v1", "/dashboard/preview")}/${bookmark.id}`;
-    content += `\n[View in Hoarder](${escapeMarkdownPath(hoarderUrl)})`;
-
-    return content;
+    return renderWithFallback(template, context);
   }
 
   private async handleFileModification(file: TFile) {
