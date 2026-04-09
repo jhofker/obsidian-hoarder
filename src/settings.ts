@@ -1,9 +1,21 @@
+import * as Obsidian from "obsidian";
 import { AbstractInputSuggest, App, Notice, PluginSettingTab, Setting, TFolder } from "obsidian";
 
 import HoarderPlugin from "./main";
 
+/** Obsidian Keychain API (optional in older versions). Types may not be in @types. */
+type SecretComponentCtor = new (
+  app: App,
+  el: HTMLElement
+) => { setValue(v: string): unknown; onChange(fn: (v: string) => void): unknown };
+const SecretComponent = (Obsidian as unknown as { SecretComponent?: SecretComponentCtor })
+  .SecretComponent as SecretComponentCtor | undefined;
+
 export interface HoarderSettings {
-  apiKey: string;
+  /** @deprecated Use apiKeySecretName and Obsidian Keychain instead. Kept for migration fallback. */
+  apiKey?: string;
+  /** Obsidian Keychain secret name; API key stored securely, not in plain text. */
+  apiKeySecretName?: string;
   apiEndpoint: string;
   syncFolder: string;
   attachmentsFolder: string;
@@ -31,6 +43,7 @@ export interface HoarderSettings {
 
 export const DEFAULT_SETTINGS: HoarderSettings = {
   apiKey: "",
+  apiKeySecretName: "",
   apiEndpoint: "https://api.hoarder.app/api/v1",
   syncFolder: "Hoarder",
   attachmentsFolder: "Hoarder/attachments",
@@ -126,19 +139,44 @@ export class HoarderSettingTab extends PluginSettingTab {
       cls: "setting-item-description",
     });
 
-    new Setting(containerEl)
-      .setName("Api key")
-      .setDesc("Your Hoarder API key")
-      .addText((text) =>
+    // Prefer Obsidian Keychain (SecretComponent) so API key is not stored in plain text in data.json
+    const apiKeySetting = new Setting(containerEl).setName("Api key");
+    const settingWithAddComponent = apiKeySetting as Setting & {
+      addComponent?: (cb: (el: HTMLElement) => void) => Setting;
+    };
+    if (
+      typeof SecretComponent === "function" &&
+      typeof settingWithAddComponent.addComponent === "function"
+    ) {
+      apiKeySetting.setDesc(
+        "Select your Hoarder API key from Obsidian's Keychain. Note: You must first create this API key in Obsidian's main Settings → 'Keychain' before it will appear here. Requires Obsidian v1.11.7 or higher."
+      );
+      settingWithAddComponent.addComponent!((el: HTMLElement): void => {
+        // Obsidian types may not expose SecretComponent; safe at runtime when typeof check passes
+        const Ctor = SecretComponent as SecretComponentCtor;
+        const component = new Ctor(this.app, el) as {
+          setValue(v: string): { onChange(fn: (v: string) => void): unknown };
+        };
+        component
+          .setValue(this.plugin.settings.apiKeySecretName ?? "")
+          .onChange(async (value: string) => {
+            this.plugin.settings.apiKeySecretName = value;
+            await this.plugin.saveSettings();
+          });
+      });
+    } else {
+      // Fallback for older Obsidian versions without SecretComponent / addComponent
+      apiKeySetting.setDesc("Your Hoarder API key").addText((text) =>
         text
           .setPlaceholder("Enter your API key")
-          .setValue(this.plugin.settings.apiKey)
-          .onChange(async (value) => {
+          .setValue(this.plugin.settings.apiKey ?? "")
+          .onChange(async (value: string) => {
             this.plugin.settings.apiKey = value;
             await this.plugin.saveSettings();
           })
           .inputEl.addClass("hoarder-wide-input")
       );
+    }
 
     new Setting(containerEl)
       .setName("Api endpoint")
