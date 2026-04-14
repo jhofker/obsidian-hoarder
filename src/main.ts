@@ -281,6 +281,11 @@ export default class HoarderPlugin extends Plugin {
       throw new Error("Archive folder not configured");
     }
 
+    // Already in the archive folder, nothing to do
+    if (file.path.startsWith(`${archiveFolder}/`)) {
+      return;
+    }
+
     // Create archive folder if it doesn't exist
     if (!(await this.app.vault.adapter.exists(archiveFolder))) {
       await this.app.vault.createFolder(archiveFolder);
