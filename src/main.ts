@@ -257,6 +257,9 @@ export default class HoarderPlugin extends Plugin {
               instruction.reason === "deleted"
                 ? this.settings.archiveFolder
                 : this.settings.archivedBookmarkFolder;
+            if (instruction.reason === "archived" && file.path.startsWith(`${archiveFolder}/`)) {
+              break;
+            }
             await this.moveToArchiveFolder(file, archiveFolder);
             break;
 
