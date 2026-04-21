@@ -1,3 +1,19 @@
+/* Settings panel normalization — override theme card styles */
+.hoarder-settings h3 {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+.hoarder-settings .setting-item {
+  border: none !important;
+  border-top: 1px solid var(--background-modifier-border) !important;
+  border-radius: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: var(--size-4-3) 0 !important;
+}
+
 .hoarder-wide-input {
   width: var(--size-4-100);
 }
@@ -40,8 +56,89 @@
   background: var(--background-modifier-hover);
 }
 
-.setting-item-description {
+.hoarder-section-description {
   margin-bottom: var(--size-4-4);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.hoarder-template-editor {
+  width: 100%;
+  margin-bottom: var(--size-4-4);
+}
+
+.hoarder-template-reference {
+  margin-bottom: var(--size-4-3);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.hoarder-template-reference summary {
+  cursor: pointer;
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+.hoarder-template-ref-content {
+  margin-top: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  white-space: pre-line;
+  line-height: 1.8;
+}
+
+.hoarder-template-ref-content code {
+  background: var(--background-modifier-code);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: var(--font-ui-smaller);
+}
+
+.hoarder-template-warnings {
+  margin-top: var(--size-4-2);
+}
+
+.hoarder-template-warning {
+  color: var(--color-orange);
+  font-size: var(--font-ui-smaller);
+  padding: var(--size-2-1) 0;
+}
+
+.hoarder-template-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  padding: var(--size-2-1) 0;
+}
+
+/* Eta output tags: <%= ... %> */
+.hoarder-eta-output {
+  color: var(--color-green);
+  background-color: rgba(var(--color-green-rgb), 0.1);
+  border-radius: 2px;
+}
+
+/* Eta control tags: <% ... %> */
+.hoarder-eta-control {
+  color: var(--color-purple);
+  background-color: rgba(var(--color-purple-rgb), 0.1);
+  border-radius: 2px;
+}
+
+/* YAML keys */
+.hoarder-yaml-key {
+  color: var(--color-cyan);
+}
+
+/* YAML frontmatter delimiters --- */
+.hoarder-yaml-delim {
+  color: var(--text-faint);
+}
+
+/* Markdown headings */
+.hoarder-md-heading {
+  color: var(--color-orange);
+  font-weight: var(--font-bold);
 }
 
 /* Karakeep Highlight Callouts */

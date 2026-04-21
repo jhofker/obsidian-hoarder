@@ -1,4 +1,9 @@
-import { extractNotesSection } from "./markdown-utils";
+import {
+  contentHasChanged,
+  extractNotesSection,
+  parseFrontmatter,
+  splitFrontmatterAndBody,
+} from "./markdown-utils";
 
 describe("extractNotesSection", () => {
   describe("basic extraction", () => {
@@ -15,6 +20,11 @@ describe("extractNotesSection", () => {
     it("should trim whitespace", () => {
       const content = "## Notes\n\n  My note  \n\n";
       expect(extractNotesSection(content)).toBe("My note");
+    });
+
+    it("should extract notes with only one newline after heading", () => {
+      const content = "## Notes\nMy note with single newline";
+      expect(extractNotesSection(content)).toBe("My note with single newline");
     });
 
     it("should return null if no notes section", () => {
@@ -61,9 +71,15 @@ describe("extractNotesSection", () => {
       expect(extractNotesSection(content)).toBe("My note");
     });
 
-    it("should handle multiple links", () => {
-      const content = "## Notes\n\nMy note\n\n[Link 1](url1)\n[Link 2](url2)";
+    it("should handle multiple footer links", () => {
+      const content =
+        "## Notes\n\nMy note\n\n[Visit Link](url1)\n[View in Hoarder](url2)";
       expect(extractNotesSection(content)).toBe("My note");
+    });
+
+    it("should NOT truncate at generic links in notes", () => {
+      const content = "## Notes\n\nMy note\n[some link](url)\nMore note";
+      expect(extractNotesSection(content)).toBe("My note\n[some link](url)\nMore note");
     });
   });
 
@@ -78,8 +94,8 @@ describe("extractNotesSection", () => {
       expect(extractNotesSection(content)).toBe("My note");
     });
 
-    it("should extract notes before links at end", () => {
-      const content = "## Notes\n\nMy note\n\n[Link](url)";
+    it("should extract notes before Visit Link at end", () => {
+      const content = "## Notes\n\nMy note\n\n[Visit Link](url)";
       expect(extractNotesSection(content)).toBe("My note");
     });
   });
@@ -248,5 +264,137 @@ Important: Remember to follow up on this!
       const content = "## Notes\n\nEnglish and 中文 mixed\n\n## Summary";
       expect(extractNotesSection(content)).toBe("English and 中文 mixed");
     });
+  });
+});
+
+describe("splitFrontmatterAndBody", () => {
+  it("should split content with frontmatter", () => {
+    const content = "---\ntitle: Test\n---\n\n# Body";
+    const result = splitFrontmatterAndBody(content);
+    expect(result.frontmatter).toBe("title: Test");
+    expect(result.body).toBe("\n# Body");
+  });
+
+  it("should handle content without frontmatter", () => {
+    const content = "# Just a body";
+    const result = splitFrontmatterAndBody(content);
+    expect(result.frontmatter).toBe("");
+    expect(result.body).toBe("# Just a body");
+  });
+
+  it("should handle empty frontmatter", () => {
+    const content = "---\n\n---\nBody";
+    const result = splitFrontmatterAndBody(content);
+    expect(result.frontmatter).toBe("");
+    expect(result.body).toBe("Body");
+  });
+});
+
+describe("parseFrontmatter", () => {
+  it("should parse simple key-value pairs", () => {
+    const yaml = 'bookmark_id: "abc123"\ntitle: My Title';
+    const result = parseFrontmatter(yaml);
+    expect(result.bookmark_id).toBe("abc123");
+    expect(result.title).toBe("My Title");
+  });
+
+  it("should parse quoted values", () => {
+    const yaml = "title: \"quoted value\"\nother: 'single quoted'";
+    const result = parseFrontmatter(yaml);
+    expect(result.title).toBe("quoted value");
+    expect(result.other).toBe("single quoted");
+  });
+
+  it("should parse block scalars", () => {
+    const yaml = "note: |\n  line one\n  line two";
+    const result = parseFrontmatter(yaml);
+    expect(result.note).toBe("line one\nline two");
+  });
+
+  it("should parse arrays", () => {
+    const yaml = "tags:\n  - tag1\n  - tag2\n  - tag3";
+    const result = parseFrontmatter(yaml);
+    expect(result.tags).toEqual(["tag1", "tag2", "tag3"]);
+  });
+
+  it("should handle empty values", () => {
+    const yaml = "note: ";
+    const result = parseFrontmatter(yaml);
+    expect(result.note).toBe("");
+  });
+
+  it("should skip empty lines", () => {
+    const yaml = "title: Test\n\ndate: 2024-01-01";
+    const result = parseFrontmatter(yaml);
+    expect(result.title).toBe("Test");
+    expect(result.date).toBe("2024-01-01");
+  });
+});
+
+describe("contentHasChanged", () => {
+  const makeContent = (fm: string, body: string) => `---\n${fm}\n---\n${body}`;
+
+  it("should return false for identical content", () => {
+    const content = makeContent("title: Test\nnote: hello", "\n# Test\n");
+    expect(contentHasChanged(content, content)).toBe(false);
+  });
+
+  it("should return true when body changes", () => {
+    const existing = makeContent("title: Test", "\n# Old Title\n");
+    const updated = makeContent("title: Test", "\n# New Title\n");
+    expect(contentHasChanged(existing, updated)).toBe(true);
+  });
+
+  it("should return true when frontmatter values change", () => {
+    const existing = makeContent("title: Old Title", "\n# Test\n");
+    const updated = makeContent("title: New Title", "\n# Test\n");
+    expect(contentHasChanged(existing, updated)).toBe(true);
+  });
+
+  it("should return false when only YAML formatting differs", () => {
+    // Hand-built template uses block scalar, Obsidian might use quoted string
+    const existing = makeContent('title: "My Title"\nnote: hello', "\n# Test\n");
+    const updated = makeContent("title: My Title\nnote: hello", "\n# Test\n");
+    expect(contentHasChanged(existing, updated)).toBe(false);
+  });
+
+  it("should return false when a field is missing vs empty string", () => {
+    const existing = makeContent("title: Test", "\n# Test\n");
+    const updated = makeContent("title: Test\nnote: ", "\n# Test\n");
+    expect(contentHasChanged(existing, updated)).toBe(false);
+  });
+
+  it("should return true when a new tag is added", () => {
+    const existing = makeContent("tags:\n  - tag1", "\n# Test\n");
+    const updated = makeContent("tags:\n  - tag1\n  - tag2", "\n# Test\n");
+    expect(contentHasChanged(existing, updated)).toBe(true);
+  });
+
+  it("should handle the real-world Obsidian vs plugin formatting case", () => {
+    // Plugin generates this format
+    const pluginGenerated = makeContent(
+      'bookmark_id: "abc123"\nurl: |\n  https://example.com\ntitle: My Article\ndate: 2024-01-15T10:30:00.000Z\nnote: \noriginal_note: \nsummary: A good article',
+      "\n# My Article\n"
+    );
+
+    // Obsidian processFrontMatter might reformat to this (different quoting)
+    const obsidianFormatted = makeContent(
+      "bookmark_id: abc123\nurl: https://example.com\ntitle: My Article\ndate: 2024-01-15T10:30:00.000Z\nnote: \noriginal_note: \nsummary: A good article",
+      "\n# My Article\n"
+    );
+
+    expect(contentHasChanged(obsidianFormatted, pluginGenerated)).toBe(false);
+  });
+
+  it("should detect real note content changes", () => {
+    const existing = makeContent(
+      "bookmark_id: abc123\nnote: old note\noriginal_note: old note",
+      "\n# Test\n\n## Notes\n\nold note\n"
+    );
+    const updated = makeContent(
+      "bookmark_id: abc123\nnote: new note\noriginal_note: new note",
+      "\n# Test\n\n## Notes\n\nnew note\n"
+    );
+    expect(contentHasChanged(existing, updated)).toBe(true);
   });
 });

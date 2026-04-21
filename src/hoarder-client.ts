@@ -72,6 +72,7 @@ export interface BookmarkQueryParams {
   cursor?: string;
   archived?: boolean;
   favourited?: boolean;
+  includeContent?: boolean;
 }
 
 export class HoarderApiClient {
@@ -182,7 +183,9 @@ export class HoarderApiClient {
     return allHighlights;
   }
 
-  async downloadAsset(assetId: string): Promise<ArrayBuffer> {
+  async downloadAsset(
+    assetId: string
+  ): Promise<{ buffer: ArrayBuffer; contentType: string | null }> {
     const url = `${this.baseUrl}/assets/${assetId}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.apiKey}`,
@@ -200,7 +203,10 @@ export class HoarderApiClient {
           throw new Error(`HTTP ${response.status}: ${response.text || "Unknown error"}`);
         }
 
-        return response.arrayBuffer;
+        return {
+          buffer: response.arrayBuffer,
+          contentType: response.headers["content-type"] || null,
+        };
       } else {
         const response = await fetch(url, {
           method: "GET",
@@ -212,7 +218,10 @@ export class HoarderApiClient {
           throw new Error(`HTTP ${response.status}: ${errorText || "Unknown error"}`);
         }
 
-        return await response.arrayBuffer();
+        return {
+          buffer: await response.arrayBuffer(),
+          contentType: response.headers.get("content-type"),
+        };
       }
     } catch (error) {
       console.error("Asset download failed:", url, error);

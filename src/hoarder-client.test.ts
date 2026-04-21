@@ -1,6 +1,6 @@
-global.fetch = jest.fn();
-
 import { HoarderApiClient, HoarderHighlight } from "./hoarder-client";
+
+global.fetch = jest.fn();
 
 const mockFetch = global.fetch as jest.Mock;
 

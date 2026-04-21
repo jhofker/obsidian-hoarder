@@ -1,4 +1,4 @@
-import { escapeMarkdownPath, escapeYaml } from "./formatting-utils";
+import { escapeMarkdownPath, escapeYaml, sanitizeHtml } from "./formatting-utils";
 
 describe("escapeYaml", () => {
   describe("null and empty handling", () => {
@@ -141,7 +141,7 @@ describe("escapeYaml", () => {
     });
 
     it("should wrap in single quotes when string contains double quotes even if also has single quotes", () => {
-      expect(escapeYaml("it's a \"test\"")).toBe("'it's a \"test\"'");
+      expect(escapeYaml('it\'s a "test"')).toBe("'it's a \"test\"'");
     });
   });
 
@@ -310,3 +310,79 @@ describe("escapeMarkdownPath", () => {
   });
 });
 
+describe("sanitizeHtml", () => {
+  it("should remove script tags and their content", () => {
+    expect(sanitizeHtml('<p>Hello</p><script>alert("xss")</script><p>World</p>')).toBe(
+      "<p>Hello</p><p>World</p>"
+    );
+  });
+
+  it("should remove self-closing script tags", () => {
+    expect(sanitizeHtml('<p>Hello</p><script src="evil.js"/><p>World</p>')).toBe(
+      "<p>Hello</p><p>World</p>"
+    );
+  });
+
+  it("should remove iframe tags", () => {
+    expect(sanitizeHtml('<iframe src="https://evil.com"></iframe>')).toBe("");
+  });
+
+  it("should remove style tags", () => {
+    expect(sanitizeHtml("<style>body { display: none }</style><p>Content</p>")).toBe(
+      "<p>Content</p>"
+    );
+  });
+
+  it("should remove form elements", () => {
+    expect(sanitizeHtml('<form action="/steal"><input type="text"></form>')).toBe("");
+  });
+
+  it("should remove object and embed tags", () => {
+    expect(sanitizeHtml('<object data="evil.swf"></object><embed src="evil.swf"/>')).toBe("");
+  });
+
+  it("should remove event handler attributes", () => {
+    expect(sanitizeHtml('<img src="photo.jpg" onerror="alert(1)">')).toBe(
+      '<img src="photo.jpg">'
+    );
+    expect(sanitizeHtml('<div onmouseover="steal()">text</div>')).toBe("<div>text</div>");
+  });
+
+  it("should remove javascript: URLs", () => {
+    const result = sanitizeHtml('<a href="javascript:alert(1)">click</a>');
+    expect(result).not.toContain("javascript:");
+    expect(result).toContain("click</a>");
+  });
+
+  it("should remove data: URLs in src", () => {
+    const result = sanitizeHtml('<img src="data:text/html,<script>alert(1)</script>">');
+    expect(result).not.toContain("data:");
+    expect(result).not.toContain("script");
+  });
+
+  it("should preserve safe HTML elements", () => {
+    const safe = "<h1>Title</h1><p>Paragraph with <strong>bold</strong> and <em>italic</em></p>";
+    expect(sanitizeHtml(safe)).toBe(safe);
+  });
+
+  it("should preserve links with normal URLs", () => {
+    const html = '<a href="https://example.com">Link</a>';
+    expect(sanitizeHtml(html)).toBe(html);
+  });
+
+  it("should preserve images with normal URLs", () => {
+    const html = '<img src="https://example.com/photo.jpg" alt="Photo">';
+    expect(sanitizeHtml(html)).toBe(html);
+  });
+
+  it("should preserve lists and blockquotes", () => {
+    const html = "<ul><li>Item 1</li><li>Item 2</li></ul><blockquote>Quote</blockquote>";
+    expect(sanitizeHtml(html)).toBe(html);
+  });
+
+  it("should handle multiple dangerous elements", () => {
+    const dirty =
+      '<p>Safe</p><script>bad()</script><iframe src="x"></iframe><p onclick="bad()">Also safe</p>';
+    expect(sanitizeHtml(dirty)).toBe("<p>Safe</p><p>Also safe</p>");
+  });
+});
