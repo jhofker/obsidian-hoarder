@@ -276,6 +276,9 @@ export default class HoarderPlugin extends Plugin {
               instruction.reason === "deleted"
                 ? this.settings.archiveFolder
                 : this.settings.archivedBookmarkFolder;
+            if (instruction.reason === "archived" && file.path.startsWith(`${archiveFolder}/`)) {
+              break;
+            }
             await this.moveToArchiveFolder(file, archiveFolder);
             break;
 
@@ -298,6 +301,11 @@ export default class HoarderPlugin extends Plugin {
   async moveToArchiveFolder(file: TFile, archiveFolder: string): Promise<void> {
     if (!archiveFolder) {
       throw new Error("Archive folder not configured");
+    }
+
+    // Already in the archive folder, nothing to do
+    if (file.path.startsWith(`${archiveFolder}/`)) {
+      return;
     }
 
     // Create archive folder if it doesn't exist
