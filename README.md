@@ -80,6 +80,85 @@ When "Handle archived bookmarks" is enabled, the plugin separately handles bookm
 
 This gives you fine-grained control over how your Obsidian vault reflects the state of your Karakeep bookmarks.
 
+## Custom Templates
+
+The plugin uses [Eta](https://eta.js.org/) templates to render bookmark notes. You can customize the template in Settings → Hoarder Sync → Template.
+
+Use `<%= it.variable %>` for output and `<% if (condition) { %>` for logic.
+
+### Available Variables
+
+**Bookmark fields**
+
+| Variable | Type | Description |
+|---|---|---|
+| `it.bookmark_id` | `string` | Unique bookmark ID |
+| `it.title` | `string` | Bookmark title |
+| `it.url` | `string \| null` | Source URL |
+| `it.description` | `string \| null` | Page description or text excerpt |
+| `it.author` | `string \| null` | Author from page metadata |
+| `it.note` | `string` | Your note (raw text) |
+| `it.noteBlock` | `string` | Note wrapped in sync comment markers |
+| `it.summary` | `string \| null` | AI-generated summary |
+| `it.created_at` | `string` | ISO 8601 creation date |
+| `it.modified_at` | `string \| null` | ISO 8601 modification date |
+| `it.content_type` | `string` | `"link"`, `"text"`, or `"asset"` |
+| `it.content_html` | `string \| null` | Raw HTML content (sanitized) |
+| `it.archived` | `boolean` | Whether bookmark is archived |
+| `it.favourited` | `boolean` | Whether bookmark is favorited |
+| `it.tags` | `string[]` | Tag names |
+| `it.hoarder_url` | `string` | Link to bookmark in Karakeep |
+| `it.visit_link` | `string \| null` | Escaped URL for Markdown links |
+| `it.sync_highlights` | `boolean` | Whether highlight sync is enabled |
+
+**Pre-escaped for YAML frontmatter**
+
+| Variable | Description |
+|---|---|
+| `it.yaml.url` | URL safe for YAML |
+| `it.yaml.title` | Title safe for YAML |
+| `it.yaml.note` | Note safe for YAML |
+| `it.yaml.summary` | Summary safe for YAML |
+
+**Assets**
+
+| Variable | Description |
+|---|---|
+| `it.assets.content` | Rendered asset embeds |
+| `it.assets.image` | Image asset path |
+| `it.assets.banner` | Banner image path |
+| `it.assets.screenshot` | Screenshot path |
+| `it.assets.full_page_archive` | Full-page archive path |
+| `it.assets.pdf_archive` | PDF archive path |
+| `it.assets.video` | Video asset path |
+| `it.assets.additional` | `string[]` of additional asset paths |
+
+**Highlights** (`it.highlights` array, each item has:)
+
+| Property | Description |
+|---|---|
+| `.id` | Highlight ID |
+| `.color` | `"yellow"`, `"red"`, `"green"`, or `"blue"` |
+| `.text` | Highlighted text |
+| `.note` | Note on the highlight |
+| `.date` | Formatted date string |
+| `.created_at` | ISO 8601 creation date |
+
+**Helper functions**
+
+| Function | Description |
+|---|---|
+| `it.escapeYaml(str)` | Escape a string for YAML frontmatter |
+| `it.escapeMarkdownPath(path)` | Escape a path for Markdown links |
+| `it.formatDate(iso)` | Format an ISO date as a readable string |
+
+### Example
+
+```
+<% if (it.author) { %>author: <%= it.escapeYaml(it.author) %>
+<% } %>
+```
+
 ## Development
 
 1. Clone this repository
