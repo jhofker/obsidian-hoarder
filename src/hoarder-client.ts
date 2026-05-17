@@ -32,6 +32,7 @@ export interface HoarderBookmarkContent {
   favicon?: string | null;
   htmlContent?: string | null;
   crawledAt?: string | null;
+  author?: string | null;
   text?: string;
   sourceUrl?: string | null;
   assetType?: "image" | "pdf";

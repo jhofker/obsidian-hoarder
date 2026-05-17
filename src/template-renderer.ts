@@ -20,6 +20,7 @@ export interface TemplateContext {
   favourited: boolean;
   content_type: string;
   content_html: string | undefined | null;
+  author: string | undefined | null;
   tags: string[];
   yaml: {
     url: string;
@@ -168,6 +169,7 @@ export function buildTemplateContext(
     favourited: bookmark.favourited,
     content_type: bookmark.content.type,
     content_html: bookmark.content.htmlContent ? sanitizeHtml(bookmark.content.htmlContent) : null,
+    author: bookmark.content.author ?? null,
     tags,
     yaml: {
       url: escapeYaml(url),
@@ -231,6 +233,7 @@ const SAMPLE_CONTEXT: TemplateContext = {
   favourited: false,
   content_type: "link",
   content_html: null,
+  author: "Sample Author",
   tags: ["sample-tag"],
   yaml: {
     url: "https://example.com",

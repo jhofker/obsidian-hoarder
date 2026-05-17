@@ -388,7 +388,7 @@ export class HoarderSettingTab extends PluginSettingTab {
 <code>it.note</code> (raw text) <code>it.noteBlock</code> (editable, wrapped in comment markers)
 <code>it.summary</code> <code>it.created_at</code> <code>it.modified_at</code>
 <code>it.content_type</code> ("link", "text", "asset") <code>it.content_html</code>
-<code>it.archived</code> <code>it.favourited</code>
+<code>it.author</code> <code>it.archived</code> <code>it.favourited</code>
 <code>it.tags</code> (string array) <code>it.hoarder_url</code> <code>it.visit_link</code>
 
 <strong>Pre-escaped for YAML frontmatter</strong>
