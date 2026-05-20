@@ -1,4 +1,4 @@
-import { App } from "obsidian";
+import { App, requestUrl } from "obsidian";
 
 import { escapeAltText, escapeMarkdownPath } from "./formatting-utils";
 import { HoarderApiClient, HoarderBookmark } from "./hoarder-client";
@@ -155,11 +155,11 @@ async function downloadAssetFile(
         headers["Authorization"] = `Bearer ${settings.apiKey}`;
       }
 
-      const response = await fetch(url, { headers });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const response = await requestUrl({ url, headers });
+      if (response.status >= 400) throw new Error(`HTTP error! status: ${response.status}`);
 
-      buffer = await response.arrayBuffer();
-      contentType = response.headers.get("content-type");
+      buffer = response.arrayBuffer;
+      contentType = response.headers["content-type"] || null;
     }
 
     const extension = resolveAssetExtension(contentType, assetLabel, url);

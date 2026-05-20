@@ -37,7 +37,7 @@ export function sanitizeTag(tag: string): string | null {
 
   // If tag starts with only numbers followed by invalid characters (edge case),
   // prepend with "tag-" to ensure at least one non-numerical character
-  if (/^[\d\/\-_]+$/.test(sanitized)) {
+  if (/^[\d/\-_]+$/.test(sanitized)) {
     sanitized = "tag-" + sanitized;
   }
 

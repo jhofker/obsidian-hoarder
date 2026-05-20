@@ -266,16 +266,16 @@ export function validateTemplate(
   // 1. Check syntax (compilation)
   try {
     eta.compile(templateString);
-  } catch (error: any) {
-    return { valid: false, error: `Syntax error: ${error.message || String(error)}` };
+  } catch (error: unknown) {
+    return { valid: false, error: `Syntax error: ${error instanceof Error ? error.message : String(error)}` };
   }
 
   // 2. Test render with sample data
   let rendered: string;
   try {
     rendered = renderTemplate(templateString, SAMPLE_CONTEXT);
-  } catch (error: any) {
-    return { valid: false, error: `Render error: ${error.message || String(error)}` };
+  } catch (error: unknown) {
+    return { valid: false, error: `Render error: ${error instanceof Error ? error.message : String(error)}` };
   }
 
   // 3. Check output structure
