@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { AbstractInputSuggest, App, Notice, PluginSettingTab, Setting, TFolder } from "obsidian";
+import { AbstractInputSuggest, App, ButtonComponent, Notice, PluginSettingTab, Setting, TFolder } from "obsidian";
 
 import HoarderPlugin from "./main";
 import { createTemplateEditor, setEditorValue } from "./template-editor";
@@ -109,7 +109,7 @@ class FolderSuggest extends AbstractInputSuggest<TFolder> {
 
 export class HoarderSettingTab extends PluginSettingTab {
   plugin: HoarderPlugin;
-  syncButton: any;
+  syncButton: ButtonComponent | null = null;
   private templateEditor: EditorView | null = null;
 
   constructor(app: App, plugin: HoarderPlugin) {
@@ -140,8 +140,8 @@ export class HoarderSettingTab extends PluginSettingTab {
     // =================
     // API Configuration
     // =================
-    containerEl.createEl("h3", { text: "API Configuration" });
-    containerEl.createEl("div", {
+    new Setting(containerEl).setName("API Configuration").setHeading();
+    containerEl.createDiv({
       text: "Connection settings for your Karakeep instance",
       cls: "hoarder-section-description",
     });
@@ -189,8 +189,8 @@ export class HoarderSettingTab extends PluginSettingTab {
     // =================
     // File Organization
     // =================
-    containerEl.createEl("h3", { text: "File Organization" });
-    containerEl.createEl("div", {
+    new Setting(containerEl).setName("File Organization").setHeading();
+    containerEl.createDiv({
       text: "Configure where your bookmarks and assets are stored",
       cls: "hoarder-section-description",
     });
@@ -232,8 +232,8 @@ export class HoarderSettingTab extends PluginSettingTab {
     // =================
     // Sync Behavior
     // =================
-    containerEl.createEl("h3", { text: "Sync Behavior" });
-    containerEl.createEl("div", {
+    new Setting(containerEl).setName("Sync Behavior").setHeading();
+    containerEl.createDiv({
       text: "Control how synchronization works",
       cls: "hoarder-section-description",
     });
@@ -346,8 +346,8 @@ export class HoarderSettingTab extends PluginSettingTab {
     // =================
     // Note Template
     // =================
-    containerEl.createEl("h3", { text: "Note Template" });
-    containerEl.createEl("div", {
+    new Setting(containerEl).setName("Note Template").setHeading();
+    containerEl.createDiv({
       text: "Customize the format of synced bookmark notes using Eta template syntax",
       cls: "hoarder-section-description",
     });
@@ -368,45 +368,61 @@ export class HoarderSettingTab extends PluginSettingTab {
 
     if (this.plugin.settings.useCustomTemplate) {
       if (this.plugin.settings.syncNotesToHoarder) {
-        containerEl.createEl("div", {
+        containerEl.createDiv({
           text: "Warning: Your template must include a ## Notes section and original_note frontmatter field for bi-directional sync to work.",
-          cls: "hoarder-section-description",
-        }).style.color = "var(--text-error)";
+          cls: "hoarder-section-description hoarder-text-error",
+        });
       }
 
-      containerEl.createEl("div", {
+      containerEl.createDiv({
         text: "Eta template for bookmark notes. Use <%= it.variable %> for output, <% if (condition) { %> for logic.",
         cls: "hoarder-section-description",
       });
 
       const details = containerEl.createEl("details", { cls: "hoarder-template-reference" });
       details.createEl("summary", { text: "Available template variables" });
-      const refContent = details.createEl("div", { cls: "hoarder-template-ref-content" });
-      refContent.innerHTML = `
-<strong>Bookmark fields</strong>
-<code>it.bookmark_id</code> <code>it.title</code> <code>it.url</code> <code>it.description</code>
-<code>it.note</code> (raw text) <code>it.noteBlock</code> (editable, wrapped in comment markers)
-<code>it.summary</code> <code>it.created_at</code> <code>it.modified_at</code>
-<code>it.content_type</code> ("link", "text", "asset") <code>it.content_html</code>
-<code>it.author</code> <code>it.archived</code> <code>it.favourited</code>
-<code>it.tags</code> (string array) <code>it.hoarder_url</code> <code>it.visit_link</code>
+      const refContent = details.createDiv({ cls: "hoarder-template-ref-content" });
 
-<strong>Pre-escaped for YAML frontmatter</strong>
-<code>it.yaml.url</code> <code>it.yaml.title</code> <code>it.yaml.note</code> <code>it.yaml.summary</code>
+      const addVarLine = (parent: HTMLElement, codes: string[], suffix?: string) => {
+        const div = parent.createDiv();
+        for (const c of codes) {
+          div.createEl("code", { text: c });
+          div.appendText(" ");
+        }
+        if (suffix) div.appendText(suffix);
+      };
 
-<strong>Assets</strong>
-<code>it.assets.content</code> (rendered embeds)
-<code>it.assets.banner</code> <code>it.assets.screenshot</code> <code>it.assets.image</code>
-<code>it.assets.full_page_archive</code> <code>it.assets.pdf_archive</code> <code>it.assets.video</code>
-<code>it.assets.additional</code> (string array)
+      refContent.createEl("strong", { text: "Bookmark fields" });
+      addVarLine(refContent, ["it.bookmark_id", "it.title", "it.url", "it.description"]);
+      addVarLine(refContent, ["it.note"], "(raw text)");
+      addVarLine(refContent, ["it.noteBlock"], "(editable, wrapped in comment markers)");
+      addVarLine(refContent, ["it.summary", "it.created_at", "it.modified_at"]);
+      addVarLine(refContent, ["it.content_type"], '("link", "text", "asset")');
+      addVarLine(refContent, ["it.content_html", "it.author", "it.archived", "it.favourited"]);
+      addVarLine(refContent, ["it.tags"], "(string array)");
+      addVarLine(refContent, ["it.hoarder_url", "it.visit_link"]);
 
-<strong>Highlights</strong> (array, each has:)
-<code>.id</code> <code>.color</code> <code>.text</code> <code>.note</code> <code>.date</code> <code>.created_at</code>
-<code>it.sync_highlights</code> (boolean)
+      refContent.createEl("br");
+      refContent.createEl("strong", { text: "Pre-escaped for YAML frontmatter" });
+      addVarLine(refContent, ["it.yaml.url", "it.yaml.title", "it.yaml.note", "it.yaml.summary"]);
 
-<strong>Helper functions</strong>
-<code>it.escapeYaml(str)</code> <code>it.escapeMarkdownPath(str)</code> <code>it.formatDate(iso)</code>
-      `.trim();
+      refContent.createEl("br");
+      refContent.createEl("strong", { text: "Assets" });
+      addVarLine(refContent, ["it.assets.content"], "(rendered embeds)");
+      addVarLine(refContent, ["it.assets.banner", "it.assets.screenshot", "it.assets.image"]);
+      addVarLine(refContent, ["it.assets.full_page_archive", "it.assets.pdf_archive", "it.assets.video"]);
+      addVarLine(refContent, ["it.assets.additional"], "(string array)");
+
+      refContent.createEl("br");
+      const highlightsLine = refContent.createDiv();
+      highlightsLine.createEl("strong", { text: "Highlights" });
+      highlightsLine.appendText(" (array, each has:)");
+      addVarLine(refContent, [".id", ".color", ".text", ".note", ".date", ".created_at"]);
+      addVarLine(refContent, ["it.sync_highlights"], "(boolean)");
+
+      refContent.createEl("br");
+      refContent.createEl("strong", { text: "Helper functions" });
+      addVarLine(refContent, ["it.escapeYaml(str)", "it.escapeMarkdownPath(str)", "it.formatDate(iso)"]);
 
       const editorContainer = containerEl.createDiv({ cls: "hoarder-template-editor" });
 
@@ -465,8 +481,8 @@ export class HoarderSettingTab extends PluginSettingTab {
     // =================
     // Sync Filtering
     // =================
-    containerEl.createEl("h3", { text: "Sync Filtering" });
-    containerEl.createEl("div", {
+    new Setting(containerEl).setName("Sync Filtering").setHeading();
+    containerEl.createDiv({
       text: "Control which bookmarks are synchronized",
       cls: "hoarder-section-description",
     });
@@ -544,13 +560,13 @@ export class HoarderSettingTab extends PluginSettingTab {
     // =================
     // Deletion Handling
     // =================
-    containerEl.createEl("h3", { text: "Deletion Handling" });
-    containerEl.createEl("div", {
+    new Setting(containerEl).setName("Deletion Handling").setHeading();
+    containerEl.createDiv({
       text: "Configure what happens when bookmarks are deleted in Karakeep",
       cls: "hoarder-section-description",
     });
 
-    const syncDeletionsToggle = new Setting(containerEl)
+    new Setting(containerEl)
       .setName("Sync deletions")
       .setDesc("Automatically handle bookmarks that are deleted in Karakeep")
       .addToggle((toggle) =>
@@ -562,7 +578,7 @@ export class HoarderSettingTab extends PluginSettingTab {
       );
 
     if (this.plugin.settings.syncDeletions) {
-      const deletionActionSetting = new Setting(containerEl)
+      new Setting(containerEl)
         .setName("Deletion action")
         .setDesc("What to do with local files when bookmarks are deleted in Karakeep")
         .addDropdown((dropdown) =>
@@ -617,13 +633,13 @@ export class HoarderSettingTab extends PluginSettingTab {
     // =================
     // Archive Handling
     // =================
-    containerEl.createEl("h3", { text: "Archive Handling" });
-    containerEl.createEl("div", {
+    new Setting(containerEl).setName("Archive Handling").setHeading();
+    containerEl.createDiv({
       text: "Configure what happens when bookmarks are archived in Karakeep",
       cls: "hoarder-section-description",
     });
 
-    const handleArchivedToggle = new Setting(containerEl)
+    new Setting(containerEl)
       .setName("Handle archived bookmarks")
       .setDesc("Separately handle bookmarks that are archived (not deleted) in Karakeep")
       .addToggle((toggle) =>
@@ -635,7 +651,7 @@ export class HoarderSettingTab extends PluginSettingTab {
       );
 
     if (this.plugin.settings.handleArchivedBookmarks) {
-      const archivedActionSetting = new Setting(containerEl)
+      new Setting(containerEl)
         .setName("Archived bookmark action")
         .setDesc("What to do with local files when bookmarks are archived in Karakeep")
         .addDropdown((dropdown) =>
@@ -691,8 +707,8 @@ export class HoarderSettingTab extends PluginSettingTab {
     // =================
     // Manual Actions & Status
     // =================
-    containerEl.createEl("h3", { text: "Manual Actions & Status" });
-    containerEl.createEl("div", {
+    new Setting(containerEl).setName("Manual Actions & Status").setHeading();
+    containerEl.createDiv({
       text: "Manual sync controls and synchronization status",
       cls: "hoarder-section-description",
     });
@@ -718,7 +734,7 @@ export class HoarderSettingTab extends PluginSettingTab {
 
     // Add Last Sync Time
     if (this.plugin.settings.lastSyncTimestamp > 0) {
-      containerEl.createEl("div", {
+      containerEl.createDiv({
         text: `Last synced: ${new Date(this.plugin.settings.lastSyncTimestamp).toLocaleString()}`,
         cls: "hoarder-section-description",
       });

@@ -28,7 +28,6 @@
     "@types/node": "^25",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
-    "builtin-modules": "^5",
     "esbuild": "^0.27",
     "jest": "^30",
     "obsidian": "^1.12",
@@ -39,6 +38,8 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@codemirror/state": "^6",
+    "@codemirror/view": "^6",
     "eta": "^4.5.1"
   }
 }

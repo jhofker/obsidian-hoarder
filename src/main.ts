@@ -57,23 +57,19 @@ export default class HoarderPlugin extends Plugin {
 
     // Register file modification event
     this.registerEvent(
-      this.app.vault.on("modify", async (file) => {
-        // Check if it's a markdown file in our sync folder
+      this.app.vault.on("modify", (file) => {
         if (
           this.settings.syncNotesToHoarder &&
           file.path.startsWith(this.settings.syncFolder) &&
           file.path.endsWith(".md") &&
           file instanceof TFile
         ) {
-          // Clear any existing timeout
           if (this.modificationTimeout) {
             window.clearTimeout(this.modificationTimeout);
           }
-
-          // Set a new timeout
-          this.modificationTimeout = window.setTimeout(async () => {
-            await this.handleFileModification(file);
-          }, 2000); // Wait 2 seconds after last modification
+          this.modificationTimeout = window.setTimeout(() => {
+            void this.handleFileModification(file);
+          }, 2000);
         }
       })
     );
@@ -112,12 +108,10 @@ export default class HoarderPlugin extends Plugin {
     // Convert minutes to milliseconds
     const interval = this.settings.syncIntervalMinutes * 60 * 1000;
 
-    // Perform initial sync
-    this.syncBookmarks();
+    void this.syncBookmarks();
 
-    // Set up periodic sync
     this.syncIntervalId = window.setInterval(() => {
-      this.syncBookmarks();
+      void this.syncBookmarks();
     }, interval);
   }
 
@@ -267,11 +261,11 @@ export default class HoarderPlugin extends Plugin {
 
       try {
         switch (instruction.action) {
-          case "delete":
-            await this.app.vault.delete(file);
+          case "delete": {
+            await this.app.fileManager.trashFile(file);
             break;
-
-          case "archive":
+          }
+          case "archive": {
             const archiveFolder =
               instruction.reason === "deleted"
                 ? this.settings.archiveFolder
@@ -281,14 +275,15 @@ export default class HoarderPlugin extends Plugin {
             }
             await this.moveToArchiveFolder(file, archiveFolder);
             break;
-
-          case "tag":
+          }
+          case "tag": {
             const tag =
               instruction.reason === "deleted"
                 ? this.settings.deletionTag
                 : this.settings.archivedBookmarkTag;
             await this.addDeletionTag(file, tag);
             break;
+          }
         }
       } catch (error) {
         console.error(`Error handling bookmark ${instruction.bookmarkId}:`, error);
@@ -353,26 +348,19 @@ export default class HoarderPlugin extends Plugin {
 
   async syncBookmarks(): Promise<{ success: boolean; message: string }> {
     if (this.isSyncing) {
-      console.error("[Hoarder] Sync already in progress");
       return { success: false, message: "Sync already in progress" };
     }
 
     if (!this.settings.apiKey) {
-      console.log("[Hoarder] API key not configured");
       return { success: false, message: "Hoarder API key not configured" };
     }
 
-    console.log("[Hoarder] Starting sync...");
-    console.log(
-      `[Hoarder] Settings: syncNotesToHoarder=${this.settings.syncNotesToHoarder}, updateExistingFiles=${this.settings.updateExistingFiles}`
-    );
     this.setSyncing(true);
     let totalBookmarks = 0;
     this.skippedFiles = 0;
     let updatedInHoarder = 0;
     let excludedByTags = 0;
     let includedByTags = 0;
-    let totalBookmarksProcessed = 0;
     let skippedNoHighlights = 0;
 
     try {
@@ -390,7 +378,6 @@ export default class HoarderPlugin extends Plugin {
       const allBookmarks = await this.fetchAllBookmarks(true); // All bookmarks including archived
 
       const activeBookmarkIds = new Set(activeBookmarks.map((b) => b.id));
-      const allBookmarkIds = new Set(allBookmarks.map((b) => b.id));
       const archivedBookmarkIds = new Set(
         allBookmarks.filter((b) => b.archived && !activeBookmarkIds.has(b.id)).map((b) => b.id)
       );
@@ -425,7 +412,6 @@ export default class HoarderPlugin extends Plugin {
         const result = await this.fetchBookmarks(cursor);
         const bookmarks = result.bookmarks || [];
         cursor = result.nextCursor || undefined;
-        totalBookmarksProcessed += bookmarks.length;
 
         // Process each bookmark
         for (const bookmark of bookmarks) {
@@ -472,21 +458,6 @@ export default class HoarderPlugin extends Plugin {
             const file = this.app.vault.getAbstractFileByPath(fileName);
             if (file instanceof TFile) {
               const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
-              const storedModifiedTime = metadata?.modified
-                ? new Date(metadata.modified).getTime()
-                : 0;
-              const bookmarkModifiedTime = bookmark.modifiedAt
-                ? new Date(bookmark.modifiedAt).getTime()
-                : new Date(bookmark.createdAt).getTime();
-
-              // Check if there are new highlights since last file update
-              let hasNewHighlights = false;
-              if (this.settings.syncHighlights && highlights.length > 0) {
-                const newestHighlightTime = Math.max(
-                  ...highlights.map((h) => new Date(h.createdAt).getTime())
-                );
-                hasNewHighlights = !storedModifiedTime || newestHighlightTime > storedModifiedTime;
-              }
 
               // Check if we should update existing files based on user setting
               if (!this.settings.updateExistingFiles) {
@@ -502,11 +473,7 @@ export default class HoarderPlugin extends Plugin {
 
                 // Initialize original_note if it's missing
                 if (originalNotes === null && currentNotes !== null) {
-                  console.debug(`[Hoarder] original_note missing for ${fileName}`);
-
-                  // If current notes differ from remote, sync them to Hoarder
-                  if (currentNotes !== remoteNotes) {
-                    console.log(`[Hoarder] Local notes differ from remote, syncing to Hoarder`);
+                          if (currentNotes !== remoteNotes) {
                     const updated = await this.updateBookmarkInHoarder(bookmark.id, currentNotes);
                     if (updated) {
                       updatedInHoarder++;
@@ -522,8 +489,6 @@ export default class HoarderPlugin extends Plugin {
                   currentNotes !== originalNotes &&
                   currentNotes !== remoteNotes
                 ) {
-                  // Local notes have changed from original, update in Hoarder
-                  console.log(`[Hoarder] Local notes changed for ${fileName}, syncing to Hoarder`);
                   const updated = await this.updateBookmarkInHoarder(bookmark.id, currentNotes);
                   if (updated) {
                     updatedInHoarder++;
@@ -625,124 +590,79 @@ export default class HoarderPlugin extends Plugin {
 
   private async handleFileModification(file: TFile) {
     try {
-      console.debug(`[Hoarder] File modified: ${file.path}`);
-
-      // Extract current and original notes
       const { currentNotes, originalNotes } = await this.extractNotesFromFile(file.path);
 
-      // Convert null to empty string for comparison
       const currentNotesStr = currentNotes || "";
       const originalNotesStr = originalNotes || "";
 
-      console.log(
-        `[Hoarder] Current notes length: ${currentNotesStr.length}, Original notes length: ${originalNotesStr.length}`
-      );
-
-      // Skip if we just synced these exact notes
       if (currentNotesStr === this.lastSyncedNotes) {
-        console.log("[Hoarder] Skipping - notes match last synced version");
         return;
       }
 
-      // Get bookmark ID from frontmatter using MetadataCache
       const metadata = this.app.metadataCache.getFileCache(file)?.frontmatter;
       const bookmarkId = metadata?.bookmark_id;
       if (!bookmarkId) {
-        console.log("[Hoarder] No bookmark_id found in frontmatter");
         return;
       }
 
-      console.log(`[Hoarder] Bookmark ID: ${bookmarkId}`);
-
-      // If original_note is null/undefined, initialize it to current value from frontmatter
-      // This handles files that were created before this fix or when updateExistingFiles was disabled
       if (originalNotes === null) {
         const frontmatterNote = metadata?.note || "";
-        console.log(`[Hoarder] original_note is null for ${file.path}`);
 
-        // Check if current notes differ from what's in frontmatter
         if (currentNotesStr !== frontmatterNote) {
-          console.log("[Hoarder] Notes have changed from frontmatter note");
           const success = await this.updateBookmarkInHoarder(bookmarkId, currentNotesStr);
           if (success) {
             this.lastSyncedNotes = currentNotesStr;
 
-            // Initialize original_note after successful sync
-            setTimeout(async () => {
-              try {
-                const { currentNotes: latestNotes, originalNotes: currentOriginalNotes } =
-                  await this.extractNotesFromFile(file.path);
-                // Only update if notes haven't changed AND original_note still needs initialization
-                if (latestNotes === currentNotesStr && currentOriginalNotes !== currentNotesStr) {
-                  await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-                    frontmatter["original_note"] = currentNotesStr;
-                  });
-                  console.debug("[Hoarder] Initialized and updated original_note in frontmatter");
-                } else if (currentOriginalNotes === currentNotesStr) {
-                  console.debug(
-                    "[Hoarder] original_note already initialized, skipping frontmatter update"
-                  );
+            window.setTimeout(() => {
+              void (async () => {
+                try {
+                  const { currentNotes: latestNotes, originalNotes: currentOriginalNotes } =
+                    await this.extractNotesFromFile(file.path);
+                  if (latestNotes === currentNotesStr && currentOriginalNotes !== currentNotesStr) {
+                    await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+                      frontmatter["original_note"] = currentNotesStr;
+                    });
+                  }
+                } catch (error) {
+                  console.error("[Hoarder] Error updating frontmatter:", error);
                 }
-              } catch (error) {
-                console.error("[Hoarder] Error updating frontmatter:", error);
-              }
+              })();
             }, 5000);
 
             new Notice("Notes synced to Hoarder");
           } else {
             console.error("[Hoarder] Failed to update bookmark in Hoarder");
           }
-        } else {
-          // Notes match frontmatter note, skip initialization to preserve mtime
-          // The field will be initialized on the next actual change
-          console.debug(
-            "[Hoarder] Notes match frontmatter, skipping original_note initialization to preserve mtime"
-          );
         }
         return;
       }
 
-      // Only update if notes have changed
       if (currentNotesStr !== originalNotesStr) {
-        console.log("[Hoarder] Notes have changed, syncing to Hoarder");
         const updated = await this.updateBookmarkInHoarder(bookmarkId, currentNotesStr);
         if (updated) {
-          // Store these notes as the last synced version
           this.lastSyncedNotes = currentNotesStr;
-          console.log("[Hoarder] Successfully synced notes to Hoarder");
 
-          // Schedule frontmatter update for later
-          setTimeout(async () => {
-            try {
-              // Re-read the file to get the latest content
-              const { currentNotes: latestNotes, originalNotes: currentOriginalNotes } =
-                await this.extractNotesFromFile(file.path);
-
-              // Only update frontmatter if notes haven't changed since sync AND original_note needs updating
-              if (latestNotes === currentNotesStr && currentOriginalNotes !== currentNotesStr) {
-                await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-                  frontmatter["original_note"] = currentNotesStr;
-                });
-                console.debug("[Hoarder] Updated original_note in frontmatter");
-              } else if (latestNotes !== currentNotesStr) {
-                console.debug("[Hoarder] Notes changed again, skipping frontmatter update");
-              } else {
-                console.debug(
-                  "[Hoarder] original_note already up to date, skipping frontmatter update"
-                );
+          window.setTimeout(() => {
+            void (async () => {
+              try {
+                const { currentNotes: latestNotes, originalNotes: currentOriginalNotes } =
+                  await this.extractNotesFromFile(file.path);
+                if (latestNotes === currentNotesStr && currentOriginalNotes !== currentNotesStr) {
+                  await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+                    frontmatter["original_note"] = currentNotesStr;
+                  });
+                }
+              } catch (error) {
+                console.error("[Hoarder] Error updating frontmatter:", error);
               }
-            } catch (error) {
-              console.error("[Hoarder] Error updating frontmatter:", error);
-            }
-          }, 5000); // Wait 5 seconds before updating frontmatter
+            })();
+          }, 5000);
 
           new Notice("Notes synced to Hoarder");
         } else {
           console.error("[Hoarder] Failed to update bookmark in Hoarder");
           new Notice("Failed to sync notes to Hoarder");
         }
-      } else {
-        console.log("[Hoarder] Notes unchanged, no sync needed");
       }
     } catch (error) {
       console.error("[Hoarder] Error handling file modification:", error);

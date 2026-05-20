@@ -11,7 +11,7 @@ export function escapeYaml(str: string | null | undefined): string {
   if (!str) return "";
 
   // If string contains newlines or special characters, use block scalar
-  if (str.includes("\n") || /[:#{}\[\],&*?|<>=!%@`]/.test(str)) {
+  if (str.includes("\n") || /[:#{}[\],&*?|<>=!%@`]/.test(str)) {
     return `|\n  ${str.replace(/\n/g, "\n  ")}`;
   }
 
@@ -21,7 +21,7 @@ export function escapeYaml(str: string | null | undefined): string {
   }
 
   if (str.includes("'") || /^[ \t]|[ \t]$/.test(str)) {
-    return `"${str.replace(/\"/g, '\\\"')}"`;
+    return `"${str.replace(/"/g, '\\"')}"`;
   }
 
   return str;

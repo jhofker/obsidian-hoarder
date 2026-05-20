@@ -1,9 +1,4 @@
 /* Settings panel normalization — override theme card styles */
-.hoarder-settings h3 {
-  margin-left: 0 !important;
-  padding-left: 0 !important;
-}
-
 .hoarder-settings .setting-item {
   border: none !important;
   border-top: 1px solid var(--background-modifier-border) !important;
@@ -60,6 +55,10 @@
   margin-bottom: var(--size-4-4);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
+}
+
+.hoarder-text-error {
+  color: var(--text-error);
 }
 
 .hoarder-template-editor {

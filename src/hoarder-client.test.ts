@@ -1,12 +1,11 @@
+import { requestUrl } from "obsidian";
 import { HoarderApiClient, HoarderHighlight } from "./hoarder-client";
 
-global.fetch = jest.fn();
-
-const mockFetch = global.fetch as jest.Mock;
+const mockRequestUrl = requestUrl as jest.Mock;
 
 describe("HoarderApiClient", () => {
   beforeEach(() => {
-    mockFetch.mockReset();
+    mockRequestUrl.mockReset();
   });
 
   describe("constructor", () => {
@@ -138,105 +137,103 @@ describe("HoarderApiClient", () => {
     });
 
     it("should set Authorization: Bearer header on requests", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ bookmarks: [], nextCursor: null }),
+      mockRequestUrl.mockResolvedValueOnce({
+        status: 200,
+        json: { bookmarks: [], nextCursor: null },
       });
 
       await client.getBookmarks();
 
-      const [, options] = mockFetch.mock.calls[0];
+      const [options] = mockRequestUrl.mock.calls[0];
       expect(options.headers["Authorization"]).toBe("Bearer test-key");
     });
 
     it("should set Content-Type: application/json header on requests", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ bookmarks: [] }),
+      mockRequestUrl.mockResolvedValueOnce({
+        status: 200,
+        json: { bookmarks: [] },
       });
 
       await client.getBookmarks();
 
-      const [, options] = mockFetch.mock.calls[0];
+      const [options] = mockRequestUrl.mock.calls[0];
       expect(options.headers["Content-Type"]).toBe("application/json");
     });
 
     it("should omit undefined query params from URL", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ bookmarks: [] }),
+      mockRequestUrl.mockResolvedValueOnce({
+        status: 200,
+        json: { bookmarks: [] },
       });
 
       await client.getBookmarks({ limit: 50, cursor: undefined });
 
-      const [url] = mockFetch.mock.calls[0];
-      expect(url).toContain("limit=50");
-      expect(url).not.toContain("cursor");
+      const [options] = mockRequestUrl.mock.calls[0];
+      expect(options.url).toContain("limit=50");
+      expect(options.url).not.toContain("cursor");
     });
 
     it("should include defined query params in URL", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ bookmarks: [] }),
+      mockRequestUrl.mockResolvedValueOnce({
+        status: 200,
+        json: { bookmarks: [] },
       });
 
       await client.getBookmarks({ limit: 25, cursor: "abc", archived: false });
 
-      const [url] = mockFetch.mock.calls[0];
-      expect(url).toContain("limit=25");
-      expect(url).toContain("cursor=abc");
-      expect(url).toContain("archived=false");
+      const [options] = mockRequestUrl.mock.calls[0];
+      expect(options.url).toContain("limit=25");
+      expect(options.url).toContain("cursor=abc");
+      expect(options.url).toContain("archived=false");
     });
 
     it("should throw on HTTP 401 error", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
+      mockRequestUrl.mockResolvedValueOnce({
         status: 401,
-        text: async () => "Unauthorized",
+        text: "Unauthorized",
       });
 
       await expect(client.getBookmarks()).rejects.toThrow("HTTP 401");
     });
 
     it("should throw on HTTP 500 error", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
+      mockRequestUrl.mockResolvedValueOnce({
         status: 500,
-        text: async () => "Internal Server Error",
+        text: "Internal Server Error",
       });
 
       await expect(client.getBookmarks()).rejects.toThrow("HTTP 500");
     });
 
     it("should send PATCH request with JSON body for updateBookmark", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: "b1" }),
+      mockRequestUrl.mockResolvedValueOnce({
+        status: 200,
+        json: { id: "b1" },
       });
 
       await client.updateBookmark("b1", { note: "my note" });
 
-      const [url, options] = mockFetch.mock.calls[0];
-      expect(url).toContain("/bookmarks/b1");
+      const [options] = mockRequestUrl.mock.calls[0];
+      expect(options.url).toContain("/bookmarks/b1");
       expect(options.method).toBe("PATCH");
       expect(JSON.parse(options.body)).toEqual({ note: "my note" });
     });
 
     it("should use GET with no body for getBookmarks", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ bookmarks: [] }),
+      mockRequestUrl.mockResolvedValueOnce({
+        status: 200,
+        json: { bookmarks: [] },
       });
 
       await client.getBookmarks();
 
-      const [, options] = mockFetch.mock.calls[0];
+      const [options] = mockRequestUrl.mock.calls[0];
       expect(options.method).toBe("GET");
       expect(options.body).toBeUndefined();
     });
 
     it("should rethrow network errors", async () => {
-      mockFetch.mockRejectedValueOnce(new Error("Network failure"));
+      mockRequestUrl.mockRejectedValueOnce(new Error("Network failure"));
 
       await expect(client.getBookmarks()).rejects.toThrow("Network failure");
     });

@@ -69,6 +69,7 @@ export interface PaginatedHighlights {
 }
 
 export interface BookmarkQueryParams {
+  [key: string]: string | number | boolean | undefined;
   limit?: number;
   cursor?: string;
   archived?: boolean;
@@ -79,23 +80,20 @@ export interface BookmarkQueryParams {
 export class HoarderApiClient {
   private baseUrl: string;
   private apiKey: string;
-  private useObsidianRequest: boolean;
 
-  constructor(baseUrl: string, apiKey: string, useObsidianRequest: boolean = false) {
-    this.baseUrl = baseUrl.replace(/\/$/, ""); // Remove trailing slash
+  constructor(baseUrl: string, apiKey: string, _useObsidianRequest: boolean = false) {
+    this.baseUrl = baseUrl.replace(/\/$/, "");
     this.apiKey = apiKey;
-    this.useObsidianRequest = useObsidianRequest;
   }
 
   private async makeRequest<T>(
     endpoint: string,
     method: "GET" | "POST" | "PATCH" | "DELETE" = "GET",
-    body?: any,
-    params?: Record<string, any>
+    body?: Record<string, unknown>,
+    params?: Record<string, unknown>
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}${endpoint}`);
 
-    // Add query parameters
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -110,35 +108,18 @@ export class HoarderApiClient {
     };
 
     try {
-      if (this.useObsidianRequest) {
-        // Use Obsidian's requestUrl to avoid CORS issues
-        const response = await requestUrl({
-          url: url.toString(),
-          method,
-          headers,
-          body: body ? JSON.stringify(body) : undefined,
-        });
+      const response = await requestUrl({
+        url: url.toString(),
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
 
-        if (response.status >= 400) {
-          throw new Error(`HTTP ${response.status}: ${response.text || "Unknown error"}`);
-        }
-
-        return response.json;
-      } else {
-        // Use standard fetch
-        const response = await fetch(url.toString(), {
-          method,
-          headers,
-          body: body ? JSON.stringify(body) : undefined,
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText || "Unknown error"}`);
-        }
-
-        return await response.json();
+      if (response.status >= 400) {
+        throw new Error(`HTTP ${response.status}: ${response.text || "Unknown error"}`);
       }
+
+      return response.json as T;
     } catch (error) {
       console.error("API request failed:", url.toString(), error);
       throw error;
@@ -151,7 +132,7 @@ export class HoarderApiClient {
 
   async updateBookmark(
     bookmarkId: string,
-    data: { note?: string; [key: string]: any }
+    data: { note?: string; [key: string]: unknown }
   ): Promise<HoarderBookmark> {
     return this.makeRequest<HoarderBookmark>(`/bookmarks/${bookmarkId}`, "PATCH", data);
   }
@@ -193,37 +174,16 @@ export class HoarderApiClient {
     };
 
     try {
-      if (this.useObsidianRequest) {
-        const response = await requestUrl({
-          url,
-          method: "GET",
-          headers,
-        });
+      const response = await requestUrl({ url, method: "GET", headers });
 
-        if (response.status >= 400) {
-          throw new Error(`HTTP ${response.status}: ${response.text || "Unknown error"}`);
-        }
-
-        return {
-          buffer: response.arrayBuffer,
-          contentType: response.headers["content-type"] || null,
-        };
-      } else {
-        const response = await fetch(url, {
-          method: "GET",
-          headers,
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText || "Unknown error"}`);
-        }
-
-        return {
-          buffer: await response.arrayBuffer(),
-          contentType: response.headers.get("content-type"),
-        };
+      if (response.status >= 400) {
+        throw new Error(`HTTP ${response.status}: ${response.text || "Unknown error"}`);
       }
+
+      return {
+        buffer: response.arrayBuffer,
+        contentType: response.headers["content-type"] || null,
+      };
     } catch (error) {
       console.error("Asset download failed:", url, error);
       throw error;
