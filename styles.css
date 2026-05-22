@@ -1,12 +1,12 @@
 /* Settings panel normalization — override theme card styles */
 .hoarder-settings .setting-item {
-  border: none !important;
-  border-top: 1px solid var(--background-modifier-border) !important;
-  border-radius: 0 !important;
-  background: none !important;
-  box-shadow: none !important;
-  margin: 0 !important;
-  padding: var(--size-4-3) 0 !important;
+  border: none;
+  border-top: 1px solid var(--background-modifier-border);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  margin: 0;
+  padding: var(--size-4-3) 0;
 }
 
 .hoarder-wide-input {
