@@ -1,6 +1,6 @@
 {
     "id": "hoarder-sync",
-    "name": "Karakeep (Hoarder) Sync",
+    "name": "Karakeep Sync",
     "version": "2.0.3",
     "minAppVersion": "1.7.0",
     "description": "Sync your Karakeep (Hoarder) bookmarks.",
