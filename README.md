@@ -1,4 +1,4 @@
-# Karakeep (Hoarder) Sync
+# Karakeep Sync
 
 This plugin syncs your [Karakeep](https://karakeep.app/) bookmarks with Obsidian, creating markdown notes for each bookmark in a designated folder.
 
