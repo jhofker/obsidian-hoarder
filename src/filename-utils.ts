@@ -13,9 +13,9 @@ export function sanitizeFileName(title: string, createdAt: string | Date): strin
   const date = typeof createdAt === "string" ? new Date(createdAt) : createdAt;
   const dateStr = date.toISOString().split("T")[0]; // This is 10 characters
 
-  // Sanitize the title
+  // Sanitize the title for filesystem and Obsidian wikilink compatibility.
   let sanitizedTitle = title
-    .replace(/[\\/:*?"<>|]/g, "-") // Replace invalid filesystem characters with dash
+    .replace(/[\\/:*?"<>|#^\[\]]/g, "-") // Replace unsafe filename/link characters with dash
     .replace(/\s+/g, "-") // Replace spaces with dash
     .replace(/-+/g, "-") // Replace multiple dashes with single dash
     .replace(/^-|-$/g, ""); // Remove dashes from start and end

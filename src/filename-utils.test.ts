@@ -52,8 +52,14 @@ describe("sanitizeFileName", () => {
       expect(sanitizeFileName("My|Title", testDate)).toBe("2024-01-15-My-Title");
     });
 
+    it("should replace Obsidian wikilink-reserved characters with dashes", () => {
+      expect(sanitizeFileName("Ultimate Primer #1: The [One] Word^Block", testDate)).toBe(
+        "2024-01-15-Ultimate-Primer-1-The-One-Word-Block"
+      );
+    });
+
     it("should handle multiple invalid characters", () => {
-      expect(sanitizeFileName('My\\/:*?"<>|Title', testDate)).toBe("2024-01-15-My-Title");
+      expect(sanitizeFileName('My\\/:*?"<>|#^[]Title', testDate)).toBe("2024-01-15-My-Title");
     });
   });
 
@@ -184,7 +190,7 @@ describe("sanitizeFileName", () => {
 
     it("should handle titles with brackets", () => {
       expect(sanitizeFileName("My [Important] Title", testDate)).toBe(
-        "2024-01-15-My-[Important]-Title"
+        "2024-01-15-My-Important-Title"
       );
     });
 
