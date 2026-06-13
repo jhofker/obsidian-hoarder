@@ -1,6 +1,6 @@
 {
   "name": "obsidian-hoarder",
-  "version": "2.0.3",
+  "version": "2.0.5",
   "description": "Sync your Karakeep (Hoarder) bookmarks with Obsidian",
   "main": "dist/main.js",
   "scripts": {
