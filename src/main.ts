@@ -17,6 +17,7 @@ import {
 } from "./hoarder-client";
 import { contentHasChanged, extractNotesSection } from "./markdown-utils";
 import { SyncStats, buildSyncMessage } from "./message-utils";
+import { shouldPushLocalNotesToRemote } from "./note-sync-utils";
 import { DEFAULT_SETTINGS, HoarderSettingTab, HoarderSettings } from "./settings";
 import {
   DEFAULT_TEMPLATE,
@@ -471,23 +472,13 @@ export default class HoarderPlugin extends Plugin {
                 const { currentNotes, originalNotes } = await this.extractNotesFromFile(fileName);
                 const remoteNotes = bookmark.note || "";
 
-                // Initialize original_note if it's missing
-                if (originalNotes === null && currentNotes !== null) {
-                          if (currentNotes !== remoteNotes) {
-                    const updated = await this.updateBookmarkInHoarder(bookmark.id, currentNotes);
-                    if (updated) {
-                      updatedInHoarder++;
-                      bookmark.note = currentNotes; // Update the bookmark object with local notes
-                      this.lastSyncedNotes = currentNotes; // Track this to avoid re-syncing
-                    }
-                  }
-                  // original_note will be written as part of formatBookmarkAsMarkdown below,
-                  // so no need for a separate processFrontMatter call that would touch mtime
-                } else if (
+                if (
                   currentNotes !== null &&
-                  originalNotes !== null &&
-                  currentNotes !== originalNotes &&
-                  currentNotes !== remoteNotes
+                  shouldPushLocalNotesToRemote({
+                    currentNotes,
+                    originalNotes,
+                    remoteNotes,
+                  })
                 ) {
                   const updated = await this.updateBookmarkInHoarder(bookmark.id, currentNotes);
                   if (updated) {
