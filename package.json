@@ -23,19 +23,18 @@
   "author": "Jordan Hofker <jhofker@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "@swc/core": "^1",
+    "@swc/jest": "^0.2",
     "@trivago/prettier-plugin-sort-imports": "^6",
     "@types/jest": "^30",
     "@types/node": "^25",
-    "@typescript-eslint/eslint-plugin": "^8",
-    "@typescript-eslint/parser": "^8",
     "esbuild": "^0.28",
     "jest": "^30",
     "obsidian": "^1.12",
     "prettier": "^3",
     "prompt-sync": "^4",
-    "ts-jest": "^29",
     "tslib": "^2",
-    "typescript": "^5"
+    "typescript": "7.0.2"
   },
   "dependencies": {
     "@codemirror/state": "^6",
