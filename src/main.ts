@@ -28,8 +28,8 @@ import {
 } from "./template-renderer";
 
 export default class HoarderPlugin extends Plugin {
-  settings: HoarderSettings;
-  syncIntervalId: number;
+  settings!: HoarderSettings;
+  syncIntervalId!: number;
   isSyncing: boolean = false;
   skippedFiles: number = 0;
   events: Events = new Events();
@@ -541,7 +541,7 @@ export default class HoarderPlugin extends Plugin {
       console.error("Error syncing bookmarks:", error);
       return {
         success: false,
-        message: `Error syncing: ${error.message}`,
+        message: `Error syncing: ${error instanceof Error ? error.message : String(error)}`,
       };
     } finally {
       this.setSyncing(false);

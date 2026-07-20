@@ -125,10 +125,10 @@ export class HoarderSettingTab extends PluginSettingTab {
     }
   }
 
-  private updateSyncButton = (isSyncing: boolean) => {
+  private updateSyncButton = (isSyncing: unknown) => {
     if (this.syncButton) {
       this.syncButton.setButtonText(isSyncing ? "Syncing..." : "Sync Now");
-      this.syncButton.setDisabled(isSyncing);
+      this.syncButton.setDisabled(!!isSyncing);
     }
   };
 
@@ -587,8 +587,8 @@ export class HoarderSettingTab extends PluginSettingTab {
             .addOption("archive", "Move to archive folder")
             .addOption("tag", "Add deletion tag")
             .setValue(this.plugin.settings.deletionAction)
-            .onChange(async (value: "delete" | "archive" | "tag") => {
-              this.plugin.settings.deletionAction = value;
+            .onChange(async (value: string) => {
+              this.plugin.settings.deletionAction = value as "delete" | "archive" | "tag";
               await this.plugin.saveSettings();
               this.display(); // Refresh the display to show/hide conditional settings
             })
@@ -661,8 +661,12 @@ export class HoarderSettingTab extends PluginSettingTab {
             .addOption("archive", "Move to archive folder")
             .addOption("tag", "Add archived tag")
             .setValue(this.plugin.settings.archivedBookmarkAction)
-            .onChange(async (value: "delete" | "archive" | "tag" | "ignore") => {
-              this.plugin.settings.archivedBookmarkAction = value;
+            .onChange(async (value: string) => {
+              this.plugin.settings.archivedBookmarkAction = value as
+                | "delete"
+                | "archive"
+                | "tag"
+                | "ignore";
               await this.plugin.saveSettings();
               this.display(); // Refresh the display to show/hide conditional settings
             })
