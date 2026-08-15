@@ -1,9 +1,23 @@
+// Characters allowed in an Obsidian tag beyond \p{L}/\p{N}/_/-//.
+// Obsidian's docs (https://obsidian.md/help/tags) say tags also allow "commonly
+// accepted Unicode characters, including emojis and other symbols" — confirmed by
+// real-world behavior (e.g. dingbats and emoji render as valid tags) even though
+// Obsidian doesn't publish an exact spec. \p{So} (Symbol, Other) covers emoji and
+// dingbats while excluding currency/math symbols like $, +, = that aren't accepted.
+// The remaining code points are the joiners/modifiers needed to keep multi-codepoint
+// emoji sequences (flags, skin tones, ZWJ families, keycaps) intact after filtering.
+const EMOJI_JOINERS = "‍️⃣"; // ZWJ, variation selector-16, keycap combiner
+const ALLOWED_TAG_CHARS = new RegExp(
+  `[^\\p{L}\\p{N}_\\-/\\p{So}\\p{Extended_Pictographic}\\p{Emoji_Modifier}\\p{Regional_Indicator}${EMOJI_JOINERS}]`,
+  "gu"
+);
+
 /**
  * Sanitizes a tag string to conform to Obsidian's tag requirements.
  *
  * Obsidian tag rules:
  * - Allowed characters: Unicode letters (including CJK/Chinese/Japanese/Korean),
- *   numbers, underscore (_), hyphen (-), forward slash (/)
+ *   numbers, underscore (_), hyphen (-), forward slash (/), and emoji/symbols
  * - Must contain at least one non-numerical character
  * - No blank spaces (converted to hyphens)
  * - Case-insensitive
@@ -21,11 +35,8 @@ export function sanitizeTag(tag: string): string | null {
   // Replace spaces with hyphens (kebab-case)
   sanitized = sanitized.replace(/\s+/g, "-");
 
-  // Remove any characters that aren't Unicode letters (including CJK), numbers,
-  // underscore, hyphen, or forward slash.
-  // \p{L} matches any Unicode letter (Latin, CJK, Cyrillic, Arabic, etc.)
-  // \p{N} matches any Unicode number
-  sanitized = sanitized.replace(/[^\p{L}\p{N}_\-/]/gu, "");
+  // Remove any character not in Obsidian's allowed set (see ALLOWED_TAG_CHARS above).
+  sanitized = sanitized.replace(ALLOWED_TAG_CHARS, "");
 
   // Return null if after sanitization we have an empty string
   if (!sanitized) return null;

@@ -127,10 +127,29 @@ describe("sanitizeTag", () => {
       expect(sanitizeTag(longTag)).toBe(longTag);
     });
 
-    it("should preserve Unicode letters but remove emoji and symbols", () => {
-      expect(sanitizeTag("tag🚀emoji")).toBe("tagemoji");
+    it("should preserve Unicode letters and accents", () => {
       expect(sanitizeTag("café")).toBe("café");
       expect(sanitizeTag("日本語")).toBe("日本語");
+    });
+
+    it("should preserve emoji and dingbats, per Obsidian's actual tag support", () => {
+      // https://obsidian.md/help/tags: tags allow "commonly accepted Unicode
+      // characters, including emojis and other symbols" (e.g. dingbats).
+      expect(sanitizeTag("tag🚀emoji")).toBe("tag🚀emoji");
+      expect(sanitizeTag("tag❋dingbat")).toBe("tag❋dingbat");
+      expect(sanitizeTag("⭐starred")).toBe("⭐starred");
+    });
+
+    it("should keep multi-codepoint emoji sequences intact", () => {
+      expect(sanitizeTag("👨‍👩‍👧‍👦family")).toBe("👨‍👩‍👧‍👦family");
+      expect(sanitizeTag("🇺🇸flag")).toBe("🇺🇸flag");
+      expect(sanitizeTag("👍🏽thumb")).toBe("👍🏽thumb");
+    });
+
+    it("should still strip currency and math symbols, which Obsidian does not accept", () => {
+      expect(sanitizeTag("tag$money")).toBe("tagmoney");
+      expect(sanitizeTag("tag+plus")).toBe("tagplus");
+      expect(sanitizeTag("tag=equals")).toBe("tagequals");
     });
 
     it("should preserve Chinese (CJK) tags", () => {
