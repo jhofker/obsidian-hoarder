@@ -3,7 +3,7 @@ import { escapeMarkdownPath, escapeYaml } from "./formatting-utils";
 import { HoarderBookmark, HoarderHighlight } from "./hoarder-client";
 import { DEFAULT_SETTINGS, HoarderSettings } from "./settings";
 import { sanitizeTags } from "./tag-utils";
-import { NOTE_BLOCK_START, NOTE_BLOCK_END } from "./template-renderer";
+import { NOTE_BLOCK_END, NOTE_BLOCK_START } from "./template-renderer";
 import {
   DEFAULT_TEMPLATE,
   buildTemplateContext,
@@ -389,9 +389,7 @@ describe("buildTemplateContext", () => {
     const bookmark = makeBookmark({ note: "My editable note" });
     const ctx = buildTemplateContext(bookmark, "Test", [], "", null, makeSettings());
     expect(ctx.note).toBe("My editable note");
-    expect(ctx.noteBlock).toBe(
-      `${NOTE_BLOCK_START}\nMy editable note\n${NOTE_BLOCK_END}`
-    );
+    expect(ctx.noteBlock).toBe(`${NOTE_BLOCK_START}\nMy editable note\n${NOTE_BLOCK_END}`);
   });
 
   it("should handle empty note in noteBlock", () => {
@@ -437,34 +435,22 @@ describe("validateTemplate", () => {
     const result = validateTemplate("---\ntitle: test\n---\n# Test");
     expect(result.valid).toBe(true);
     expect(result.warnings).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("bookmark_id"),
-      ])
+      expect.arrayContaining([expect.stringContaining("bookmark_id")])
     );
   });
 
   it("should warn when original_note is missing", () => {
-    const result = validateTemplate(
-      "---\nbookmark_id: test\n---\n# Test\n\n## Notes\n\ntest"
-    );
+    const result = validateTemplate("---\nbookmark_id: test\n---\n# Test\n\n## Notes\n\ntest");
     expect(result.valid).toBe(true);
     expect(result.warnings).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("original_note"),
-      ])
+      expect.arrayContaining([expect.stringContaining("original_note")])
     );
   });
 
   it("should warn when Notes section is missing", () => {
-    const result = validateTemplate(
-      "---\nbookmark_id: test\noriginal_note: test\n---\n# Test"
-    );
+    const result = validateTemplate("---\nbookmark_id: test\noriginal_note: test\n---\n# Test");
     expect(result.valid).toBe(true);
-    expect(result.warnings).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("## Notes"),
-      ])
-    );
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining("## Notes")]));
   });
 });
 
@@ -498,5 +484,46 @@ describe("custom template", () => {
     const template = `<%= it.escapeYaml("value: with colons") %>`;
     const result = renderTemplate(template, context);
     expect(result).toContain("value");
+  });
+});
+
+describe("lists in template context", () => {
+  it("defaults to an empty array when no lists are passed", () => {
+    const context = buildTemplateContext(makeBookmark(), "Test", [], "", null, makeSettings());
+    expect(context.lists).toEqual([]);
+  });
+
+  it("passes through the given list paths", () => {
+    const context = buildTemplateContext(makeBookmark(), "Test", [], "", null, makeSettings(), [
+      "Reading",
+      "Reading/Tech",
+    ]);
+    expect(context.lists).toEqual(["Reading", "Reading/Tech"]);
+  });
+
+  it("renders lists as a quoted YAML frontmatter array in the default template", () => {
+    const bookmark = makeBookmark();
+    const context = buildTemplateContext(bookmark, "Test", [], "", null, makeSettings(), [
+      "Reading",
+      "Reading/Tech",
+    ]);
+    const result = renderTemplate(DEFAULT_TEMPLATE, context);
+    expect(result).toContain('lists:\n  - "Reading"\n  - "Reading/Tech"\n');
+  });
+
+  it("omits the lists frontmatter key entirely when there are none", () => {
+    const bookmark = makeBookmark();
+    const context = buildTemplateContext(bookmark, "Test", [], "", null, makeSettings());
+    const result = renderTemplate(DEFAULT_TEMPLATE, context);
+    expect(result).not.toContain("lists:");
+  });
+
+  it("escapes quotes inside list names via escapeYamlListItem", () => {
+    const bookmark = makeBookmark();
+    const context = buildTemplateContext(bookmark, "Test", [], "", null, makeSettings(), [
+      'Say "Hi"',
+    ]);
+    const result = renderTemplate(DEFAULT_TEMPLATE, context);
+    expect(result).toContain('- "Say \\"Hi\\""');
   });
 });

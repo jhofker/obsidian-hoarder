@@ -63,6 +63,14 @@ export interface PaginatedBookmarks {
   nextCursor: string | null;
 }
 
+export interface HoarderList {
+  id: string;
+  name: string;
+  icon: string;
+  parentId: string | null;
+  type: "manual" | "smart";
+}
+
 export interface PaginatedHighlights {
   highlights: HoarderHighlight[];
   nextCursor: string | null;
@@ -163,6 +171,33 @@ export class HoarderApiClient {
     } while (cursor);
 
     return allHighlights;
+  }
+
+  async getLists(): Promise<{ lists: HoarderList[] }> {
+    return this.makeRequest<{ lists: HoarderList[] }>("/lists", "GET");
+  }
+
+  async getListBookmarks(
+    listId: string,
+    params?: { limit?: number; cursor?: string }
+  ): Promise<PaginatedBookmarks> {
+    return this.makeRequest<PaginatedBookmarks>(`/lists/${listId}/bookmarks`, "GET", undefined, {
+      ...params,
+      includeContent: false,
+    });
+  }
+
+  async getAllListBookmarkIds(listId: string): Promise<string[]> {
+    const ids: string[] = [];
+    let cursor: string | undefined;
+
+    do {
+      const data = await this.getListBookmarks(listId, { limit: 100, cursor });
+      ids.push(...(data.bookmarks || []).map((b) => b.id));
+      cursor = data.nextCursor || undefined;
+    } while (cursor);
+
+    return ids;
   }
 
   async downloadAsset(
