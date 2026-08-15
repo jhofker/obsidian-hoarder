@@ -1,5 +1,13 @@
 import { EditorView } from "@codemirror/view";
-import { AbstractInputSuggest, App, ButtonComponent, Notice, PluginSettingTab, Setting, TFolder } from "obsidian";
+import {
+  AbstractInputSuggest,
+  App,
+  ButtonComponent,
+  Notice,
+  PluginSettingTab,
+  Setting,
+  TFolder,
+} from "obsidian";
 
 import HoarderPlugin from "./main";
 import { createTemplateEditor, setEditorValue } from "./template-editor";
@@ -17,6 +25,7 @@ export interface HoarderSettings {
   onlyFavorites: boolean;
   syncNotesToHoarder: boolean;
   syncHighlights: boolean;
+  syncLists: boolean;
   onlyBookmarksWithHighlights: boolean;
   excludedTags: string[];
   includedTags: string[];
@@ -50,6 +59,7 @@ export const DEFAULT_SETTINGS: HoarderSettings = {
   onlyFavorites: false,
   syncNotesToHoarder: true,
   syncHighlights: true,
+  syncLists: false,
   onlyBookmarksWithHighlights: false,
   excludedTags: [],
   includedTags: [],
@@ -289,6 +299,18 @@ export class HoarderSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Sync lists")
+      .setDesc(
+        "Include the Karakeep list(s) each bookmark belongs to as a 'lists' frontmatter field. Nested lists are rendered as slash-separated paths (e.g. 'Reading/Tech')."
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.syncLists).onChange(async (value) => {
+          this.plugin.settings.syncLists = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
       .setName("Download assets")
       .setDesc(
         "Download images and other assets locally (if disabled, assets will be embedded using their source URLs)"
@@ -400,6 +422,7 @@ export class HoarderSettingTab extends PluginSettingTab {
       addVarLine(refContent, ["it.content_type"], '("link", "text", "asset")');
       addVarLine(refContent, ["it.content_html", "it.author", "it.archived", "it.favourited"]);
       addVarLine(refContent, ["it.tags"], "(string array)");
+      addVarLine(refContent, ["it.lists"], "(string array, nested paths e.g. 'Reading/Tech')");
       addVarLine(refContent, ["it.hoarder_url", "it.visit_link"]);
 
       refContent.createEl("br");
@@ -410,7 +433,11 @@ export class HoarderSettingTab extends PluginSettingTab {
       refContent.createEl("strong", { text: "Assets" });
       addVarLine(refContent, ["it.assets.content"], "(rendered embeds)");
       addVarLine(refContent, ["it.assets.banner", "it.assets.screenshot", "it.assets.image"]);
-      addVarLine(refContent, ["it.assets.full_page_archive", "it.assets.pdf_archive", "it.assets.video"]);
+      addVarLine(refContent, [
+        "it.assets.full_page_archive",
+        "it.assets.pdf_archive",
+        "it.assets.video",
+      ]);
       addVarLine(refContent, ["it.assets.additional"], "(string array)");
 
       refContent.createEl("br");
@@ -422,7 +449,11 @@ export class HoarderSettingTab extends PluginSettingTab {
 
       refContent.createEl("br");
       refContent.createEl("strong", { text: "Helper functions" });
-      addVarLine(refContent, ["it.escapeYaml(str)", "it.escapeMarkdownPath(str)", "it.formatDate(iso)"]);
+      addVarLine(refContent, [
+        "it.escapeYaml(str)",
+        "it.escapeMarkdownPath(str)",
+        "it.formatDate(iso)",
+      ]);
 
       const editorContainer = containerEl.createDiv({ cls: "hoarder-template-editor" });
 

@@ -15,6 +15,7 @@ import {
   HoarderHighlight,
   PaginatedBookmarks,
 } from "./hoarder-client";
+import { buildBookmarkListsMap } from "./list-utils";
 import { contentHasChanged, extractNotesSection } from "./markdown-utils";
 import { SyncStats, buildSyncMessage } from "./message-utils";
 import { shouldPushLocalNotesToRemote } from "./note-sync-utils";
@@ -407,6 +408,22 @@ export default class HoarderPlugin extends Plugin {
         }
       }
 
+      // Fetch list membership in bulk if enabled. Iterating lists (cheap, few per user)
+      // and paginating each list's bookmarks is far cheaper than querying per-bookmark
+      // list membership, since bookmark counts are typically much larger than list counts.
+      let bookmarkListsMap = new Map<string, string[]>();
+      if (this.settings.syncLists && this.client) {
+        try {
+          const { lists } = await this.client.getLists();
+          bookmarkListsMap = await buildBookmarkListsMap(lists, (listId) =>
+            this.client!.getAllListBookmarkIds(listId)
+          );
+        } catch (error) {
+          console.error("Error fetching lists in bulk:", error);
+          // Continue without lists rather than failing the entire sync
+        }
+      }
+
       let cursor: string | undefined;
 
       do {
@@ -449,8 +466,9 @@ export default class HoarderPlugin extends Plugin {
           const title = getBookmarkTitle(bookmark);
           const fileName = `${folderPath}/${sanitizeFileName(title, bookmark.createdAt)}.md`;
 
-          // Get highlights for this bookmark from pre-fetched map
+          // Get highlights and lists for this bookmark from pre-fetched maps
           const highlights = highlightsByBookmarkId.get(bookmark.id) || [];
+          const lists = bookmarkListsMap.get(bookmark.id);
 
           const fileExists = await this.app.vault.adapter.exists(fileName);
 
@@ -490,7 +508,12 @@ export default class HoarderPlugin extends Plugin {
               }
 
               // Generate new content and compare with existing
-              const newContent = await this.formatBookmarkAsMarkdown(bookmark, title, highlights);
+              const newContent = await this.formatBookmarkAsMarkdown(
+                bookmark,
+                title,
+                highlights,
+                lists
+              );
               const existingContent = await this.app.vault.adapter.read(fileName);
 
               if (contentHasChanged(existingContent, newContent)) {
@@ -503,7 +526,7 @@ export default class HoarderPlugin extends Plugin {
               }
             }
           } else {
-            const content = await this.formatBookmarkAsMarkdown(bookmark, title, highlights);
+            const content = await this.formatBookmarkAsMarkdown(bookmark, title, highlights, lists);
             await this.app.vault.create(fileName, content);
             totalBookmarks++;
           }
@@ -552,7 +575,8 @@ export default class HoarderPlugin extends Plugin {
   async formatBookmarkAsMarkdown(
     bookmark: HoarderBookmark,
     title: string,
-    highlights?: HoarderHighlight[]
+    highlights?: HoarderHighlight[],
+    lists?: string[]
   ): Promise<string> {
     const { content: assetContent, frontmatter: assetsFm } = await processBookmarkAssets(
       this.app,
@@ -568,7 +592,8 @@ export default class HoarderPlugin extends Plugin {
       highlights,
       assetContent,
       assetsFm,
-      this.settings
+      this.settings,
+      lists
     );
 
     const template =

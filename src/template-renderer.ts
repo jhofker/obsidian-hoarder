@@ -1,7 +1,12 @@
 import { Eta } from "eta";
 
 import { AssetFrontmatter } from "./asset-handler";
-import { escapeMarkdownPath, escapeYaml, sanitizeHtml } from "./formatting-utils";
+import {
+  escapeMarkdownPath,
+  escapeYaml,
+  escapeYamlListItem,
+  sanitizeHtml,
+} from "./formatting-utils";
 import { HoarderBookmark, HoarderHighlight } from "./hoarder-client";
 import { HoarderSettings } from "./settings";
 import { sanitizeTags } from "./tag-utils";
@@ -22,6 +27,7 @@ export interface TemplateContext {
   content_html: string | undefined | null;
   author: string | undefined | null;
   tags: string[];
+  lists: string[];
   yaml: {
     url: string;
     title: string;
@@ -50,6 +56,7 @@ export interface TemplateContext {
   visit_link: string | null;
   sync_highlights: boolean;
   escapeYaml: (str: string | null | undefined) => string;
+  escapeYamlListItem: (str: string) => string;
   escapeMarkdownPath: (path: string) => string;
   formatDate: (iso: string) => string;
 }
@@ -64,6 +71,8 @@ date: <%= it.created_at %>
 <% if (it.modified_at) { %>modified: <%= it.modified_at %>
 <% } %><% if (it.tags.length > 0) { %>tags:
 <% it.tags.forEach(function(tag) { %>  - <%= tag %>
+<% }) %><% } %><% if (it.lists.length > 0) { %>lists:
+<% it.lists.forEach(function(list) { %>  - <%= it.escapeYamlListItem(list) %>
 <% }) %><% } %>note: <%= it.yaml.note %>
 original_note: <%= it.yaml.note %>
 summary: <%= it.yaml.summary %>
@@ -139,7 +148,8 @@ export function buildTemplateContext(
   highlights: HoarderHighlight[] | undefined,
   assetContent: string,
   assetsFm: AssetFrontmatter | null,
-  settings: HoarderSettings
+  settings: HoarderSettings,
+  lists: string[] = []
 ): TemplateContext {
   const url = bookmark.content.type === "link" ? bookmark.content.url : bookmark.content.sourceUrl;
   const description =
@@ -171,6 +181,7 @@ export function buildTemplateContext(
     content_html: bookmark.content.htmlContent ? sanitizeHtml(bookmark.content.htmlContent) : null,
     author: bookmark.content.author ?? null,
     tags,
+    lists,
     yaml: {
       url: escapeYaml(url),
       title: escapeYaml(title),
@@ -199,6 +210,7 @@ export function buildTemplateContext(
     visit_link: url && bookmark.content.type !== "asset" ? escapeMarkdownPath(url) : null,
     sync_highlights: settings.syncHighlights,
     escapeYaml,
+    escapeYamlListItem,
     escapeMarkdownPath,
     formatDate: formatHighlightDate,
   };
@@ -235,6 +247,7 @@ const SAMPLE_CONTEXT: TemplateContext = {
   content_html: null,
   author: "Sample Author",
   tags: ["sample-tag"],
+  lists: ["Sample List"],
   yaml: {
     url: "https://example.com",
     title: "Sample Bookmark",
@@ -256,18 +269,24 @@ const SAMPLE_CONTEXT: TemplateContext = {
   visit_link: "https://example.com",
   sync_highlights: true,
   escapeYaml,
+  escapeYamlListItem,
   escapeMarkdownPath,
   formatDate: formatHighlightDate,
 };
 
-export function validateTemplate(
-  templateString: string
-): { valid: boolean; error?: string; warnings?: string[] } {
+export function validateTemplate(templateString: string): {
+  valid: boolean;
+  error?: string;
+  warnings?: string[];
+} {
   // 1. Check syntax (compilation)
   try {
     eta.compile(templateString);
   } catch (error: unknown) {
-    return { valid: false, error: `Syntax error: ${error instanceof Error ? error.message : String(error)}` };
+    return {
+      valid: false,
+      error: `Syntax error: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 
   // 2. Test render with sample data
@@ -275,7 +294,10 @@ export function validateTemplate(
   try {
     rendered = renderTemplate(templateString, SAMPLE_CONTEXT);
   } catch (error: unknown) {
-    return { valid: false, error: `Render error: ${error instanceof Error ? error.message : String(error)}` };
+    return {
+      valid: false,
+      error: `Render error: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 
   // 3. Check output structure
@@ -290,13 +312,13 @@ export function validateTemplate(
   }
 
   if (!rendered.includes("original_note:")) {
-    warnings.push(
-      "Template output is missing original_note — bi-directional sync will not work"
-    );
+    warnings.push("Template output is missing original_note — bi-directional sync will not work");
   }
 
   if (!/## Notes\b/.test(rendered)) {
-    warnings.push("Template output is missing ## Notes section — bi-directional sync will not work");
+    warnings.push(
+      "Template output is missing ## Notes section — bi-directional sync will not work"
+    );
   }
 
   return { valid: true, warnings: warnings.length > 0 ? warnings : undefined };

@@ -28,6 +28,24 @@ export function escapeYaml(str: string | null | undefined): string {
 }
 
 /**
+ * Escapes a string for use as a single-line YAML list item (e.g. a tag or list name),
+ * always double-quoting so characters like ':' or '#' can't break the list structure.
+ * Newlines/tabs are escaped to their YAML double-quote escape sequences rather than
+ * left as literal control characters, which would otherwise break the single-line form.
+ *
+ * @param str - The string to escape
+ * @returns A double-quoted YAML scalar safe for inline list use
+ */
+export function escapeYamlListItem(str: string): string {
+  const escaped = str
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r\n|\r|\n/g, "\\n")
+    .replace(/\t/g, "\\t");
+  return `"${escaped}"`;
+}
+
+/**
  * Escapes a path string for use in Markdown links.
  *
  * Wraps paths containing spaces or special characters in angle brackets
