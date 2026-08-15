@@ -8,27 +8,26 @@ export function buildListPaths(lists: HoarderList[]): Map<string, string> {
   const byId = new Map(lists.map((list) => [list.id, list]));
   const paths = new Map<string, string>();
 
-  function resolve(id: string, seen: Set<string>): string {
-    const cached = paths.get(id);
-    if (cached !== undefined) return cached;
-
-    const list = byId.get(id);
-    if (!list) return "";
-
-    if (seen.has(id)) return list.name;
-    seen.add(id);
-
-    const path =
-      list.parentId && byId.has(list.parentId)
-        ? `${resolve(list.parentId, seen)}/${list.name}`
-        : list.name;
-
-    paths.set(id, path);
-    return path;
-  }
-
   for (const list of lists) {
-    resolve(list.id, new Set());
+    const chain = [list.name];
+    const visited = new Set<string>([list.id]);
+    let parentId = list.parentId;
+    let hasCycle = false;
+
+    while (parentId && byId.has(parentId)) {
+      if (visited.has(parentId)) {
+        hasCycle = true;
+        break;
+      }
+      visited.add(parentId);
+      const parent = byId.get(parentId)!;
+      chain.unshift(parent.name);
+      parentId = parent.parentId;
+    }
+
+    // On a cycle, fall back to just the list's own name rather than a
+    // partial/garbled chain — the ancestor path can't be resolved.
+    paths.set(list.id, hasCycle ? list.name : chain.join("/"));
   }
 
   return paths;

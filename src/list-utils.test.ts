@@ -33,14 +33,14 @@ describe("buildListPaths", () => {
     expect(buildListPaths(lists).get("1")).toBe("Orphan");
   });
 
-  it("does not infinite-loop on a cyclical parentId chain", () => {
+  it("falls back to each list's own name on a cyclical parentId chain", () => {
     const lists = [
       makeList({ id: "1", name: "A", parentId: "2" }),
       makeList({ id: "2", name: "B", parentId: "1" }),
     ];
     const paths = buildListPaths(lists);
-    expect(paths.get("1")).toBeDefined();
-    expect(paths.get("2")).toBeDefined();
+    expect(paths.get("1")).toBe("A");
+    expect(paths.get("2")).toBe("B");
   });
 });
 

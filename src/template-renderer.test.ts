@@ -526,4 +526,16 @@ describe("lists in template context", () => {
     const result = renderTemplate(DEFAULT_TEMPLATE, context);
     expect(result).toContain('- "Say \\"Hi\\""');
   });
+
+  it("escapes newlines and tabs inside list names so the YAML scalar stays single-line", () => {
+    const bookmark = makeBookmark();
+    const context = buildTemplateContext(bookmark, "Test", [], "", null, makeSettings(), [
+      "Weird\nName\tHere",
+    ]);
+    const result = renderTemplate(DEFAULT_TEMPLATE, context);
+    expect(result).toContain('- "Weird\\nName\\tHere"');
+    // The rendered frontmatter must not contain an actual raw newline/tab inside the list item.
+    const listsLine = result.split("\n").find((line) => line.trim().startsWith("- ") && line.includes("Weird"));
+    expect(listsLine).toBeDefined();
+  });
 });
