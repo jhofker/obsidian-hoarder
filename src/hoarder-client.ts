@@ -157,20 +157,12 @@ export class HoarderApiClient {
   }
 
   async getAllHighlights(): Promise<HoarderHighlight[]> {
-    const allHighlights: HoarderHighlight[] = [];
-    let cursor: string | undefined;
-
-    do {
-      const data = await this.getHighlights({
-        limit: 100,
-        cursor: cursor || undefined,
-      });
-
-      allHighlights.push(...(data.highlights || []));
-      cursor = data.nextCursor || undefined;
-    } while (cursor);
-
-    return allHighlights;
+    return this.collectPaginated((cursor) =>
+      this.getHighlights({ limit: 100, cursor }).then((data) => ({
+        items: data.highlights || [],
+        nextCursor: data.nextCursor,
+      }))
+    );
   }
 
   async getLists(): Promise<{ lists: HoarderList[] }> {
@@ -188,16 +180,27 @@ export class HoarderApiClient {
   }
 
   async getAllListBookmarkIds(listId: string): Promise<string[]> {
-    const ids: string[] = [];
+    return this.collectPaginated((cursor) =>
+      this.getListBookmarks(listId, { limit: 100, cursor }).then((data) => ({
+        items: (data.bookmarks || []).map((b) => b.id),
+        nextCursor: data.nextCursor,
+      }))
+    );
+  }
+
+  private async collectPaginated<T>(
+    fetchPage: (cursor?: string) => Promise<{ items: T[]; nextCursor: string | null }>
+  ): Promise<T[]> {
+    const all: T[] = [];
     let cursor: string | undefined;
 
     do {
-      const data = await this.getListBookmarks(listId, { limit: 100, cursor });
-      ids.push(...(data.bookmarks || []).map((b) => b.id));
-      cursor = data.nextCursor || undefined;
+      const { items, nextCursor } = await fetchPage(cursor);
+      all.push(...items);
+      cursor = nextCursor || undefined;
     } while (cursor);
 
-    return ids;
+    return all;
   }
 
   async downloadAsset(

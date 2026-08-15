@@ -44,13 +44,19 @@ export async function buildBookmarkListsMap(
   getListBookmarkIds: (listId: string) => Promise<string[]>
 ): Promise<Map<string, string[]>> {
   const listPaths = buildListPaths(lists);
+
+  // Fetch each list's bookmarks concurrently (lists are independent), but merge
+  // afterward in list order so a bookmark's `lists` array is deterministic
+  // regardless of which network request happens to finish first.
+  const perList = await Promise.all(
+    lists.map(async (list) => ({
+      path: listPaths.get(list.id)!,
+      bookmarkIds: await getListBookmarkIds(list.id),
+    }))
+  );
+
   const bookmarkLists = new Map<string, string[]>();
-
-  for (const list of lists) {
-    const path = listPaths.get(list.id);
-    if (!path) continue;
-
-    const bookmarkIds = await getListBookmarkIds(list.id);
+  for (const { path, bookmarkIds } of perList) {
     for (const bookmarkId of bookmarkIds) {
       if (!bookmarkLists.has(bookmarkId)) {
         bookmarkLists.set(bookmarkId, []);

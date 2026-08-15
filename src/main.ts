@@ -466,8 +466,9 @@ export default class HoarderPlugin extends Plugin {
           const title = getBookmarkTitle(bookmark);
           const fileName = `${folderPath}/${sanitizeFileName(title, bookmark.createdAt)}.md`;
 
-          // Get highlights for this bookmark from pre-fetched map
+          // Get highlights and lists for this bookmark from pre-fetched maps
           const highlights = highlightsByBookmarkId.get(bookmark.id) || [];
+          const lists = bookmarkListsMap.get(bookmark.id);
 
           const fileExists = await this.app.vault.adapter.exists(fileName);
 
@@ -507,7 +508,6 @@ export default class HoarderPlugin extends Plugin {
               }
 
               // Generate new content and compare with existing
-              const lists = bookmarkListsMap.get(bookmark.id);
               const newContent = await this.formatBookmarkAsMarkdown(
                 bookmark,
                 title,
@@ -526,7 +526,6 @@ export default class HoarderPlugin extends Plugin {
               }
             }
           } else {
-            const lists = bookmarkListsMap.get(bookmark.id);
             const content = await this.formatBookmarkAsMarkdown(bookmark, title, highlights, lists);
             await this.app.vault.create(fileName, content);
             totalBookmarks++;
