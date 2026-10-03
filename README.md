@@ -97,6 +97,8 @@ Use `<%= it.variable %>` for output and `<% if (condition) { %>` for logic.
 | `it.url` | `string \| null` | Source URL |
 | `it.description` | `string \| null` | Page description or text excerpt |
 | `it.author` | `string \| null` | Author from page metadata |
+| `it.publisher` | `string \| null` | Publisher from page metadata |
+| `it.published_date` | `string \| null` | Original publication date (ISO 8601) from page metadata |
 | `it.note` | `string` | Your note (raw text) |
 | `it.noteBlock` | `string` | Note wrapped in sync comment markers |
 | `it.summary` | `string \| null` | AI-generated summary |

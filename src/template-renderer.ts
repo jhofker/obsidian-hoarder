@@ -26,6 +26,8 @@ export interface TemplateContext {
   content_type: string;
   content_html: string | undefined | null;
   author: string | undefined | null;
+  publisher: string | undefined | null;
+  published_date: string | null;
   tags: string[];
   lists: string[];
   yaml: {
@@ -59,6 +61,12 @@ export interface TemplateContext {
   escapeYamlListItem: (str: string) => string;
   escapeMarkdownPath: (path: string) => string;
   formatDate: (iso: string) => string;
+}
+
+function toIsoOrNull(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 // The default template reproduces the exact output of the original formatBookmarkAsMarkdown().
@@ -180,6 +188,8 @@ export function buildTemplateContext(
     content_type: bookmark.content.type,
     content_html: bookmark.content.htmlContent ? sanitizeHtml(bookmark.content.htmlContent) : null,
     author: bookmark.content.author ?? null,
+    publisher: bookmark.content.publisher ?? null,
+    published_date: toIsoOrNull(bookmark.content.datePublished),
     tags,
     lists,
     yaml: {
@@ -246,6 +256,8 @@ const SAMPLE_CONTEXT: TemplateContext = {
   content_type: "link",
   content_html: null,
   author: "Sample Author",
+  publisher: "Sample Publisher",
+  published_date: "2024-01-10T08:00:00.000Z",
   tags: ["sample-tag"],
   lists: ["Sample List"],
   yaml: {
