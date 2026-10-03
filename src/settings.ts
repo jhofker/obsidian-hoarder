@@ -421,6 +421,7 @@ export class HoarderSettingTab extends PluginSettingTab {
       addVarLine(refContent, ["it.summary", "it.created_at", "it.modified_at"]);
       addVarLine(refContent, ["it.content_type"], '("link", "text", "asset")');
       addVarLine(refContent, ["it.content_html", "it.author", "it.archived", "it.favourited"]);
+      addVarLine(refContent, ["it.publisher", "it.published_date"], "(from page metadata, may be null)");
       addVarLine(refContent, ["it.tags"], "(string array)");
       addVarLine(refContent, ["it.lists"], "(string array, nested paths e.g. 'Reading/Tech')");
       addVarLine(refContent, ["it.hoarder_url", "it.visit_link"]);

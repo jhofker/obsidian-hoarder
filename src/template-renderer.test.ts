@@ -397,6 +397,32 @@ describe("buildTemplateContext", () => {
     const ctx = buildTemplateContext(bookmark, "Test", [], "", null, makeSettings());
     expect(ctx.noteBlock).toBe(`${NOTE_BLOCK_START}\n\n${NOTE_BLOCK_END}`);
   });
+
+  it("should expose publisher and published_date from content metadata", () => {
+    const bookmark = makeBookmark({
+      content: {
+        type: "link",
+        url: "https://example.com",
+        publisher: "la Repubblica",
+        datePublished: "2026-09-12T17:03:23.000Z",
+      },
+    });
+    const ctx = buildTemplateContext(bookmark, "Test", [], "", null, makeSettings());
+    expect(ctx.publisher).toBe("la Repubblica");
+    expect(ctx.published_date).toBe("2026-09-12T17:03:23.000Z");
+  });
+
+  it("should default publisher and published_date to null when missing or invalid", () => {
+    const missing = buildTemplateContext(makeBookmark(), "Test", [], "", null, makeSettings());
+    expect(missing.publisher).toBeNull();
+    expect(missing.published_date).toBeNull();
+
+    const invalid = makeBookmark({
+      content: { type: "link", url: "https://example.com", datePublished: "not a date" },
+    });
+    const ctx = buildTemplateContext(invalid, "Test", [], "", null, makeSettings());
+    expect(ctx.published_date).toBeNull();
+  });
 });
 
 describe("validateTemplate", () => {

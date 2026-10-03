@@ -33,6 +33,8 @@ export interface HoarderBookmarkContent {
   htmlContent?: string | null;
   crawledAt?: string | null;
   author?: string | null;
+  publisher?: string | null;
+  datePublished?: string | null;
   text?: string;
   sourceUrl?: string | null;
   assetType?: "image" | "pdf";
