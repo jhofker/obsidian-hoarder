@@ -63,6 +63,14 @@ export interface PaginatedBookmarks {
   nextCursor: string | null;
 }
 
+export interface HoarderList {
+  id: string;
+  name: string;
+  icon: string;
+  parentId: string | null;
+  type: "manual" | "smart";
+}
+
 export interface PaginatedHighlights {
   highlights: HoarderHighlight[];
   nextCursor: string | null;
@@ -149,20 +157,50 @@ export class HoarderApiClient {
   }
 
   async getAllHighlights(): Promise<HoarderHighlight[]> {
-    const allHighlights: HoarderHighlight[] = [];
+    return this.collectPaginated((cursor) =>
+      this.getHighlights({ limit: 100, cursor }).then((data) => ({
+        items: data.highlights || [],
+        nextCursor: data.nextCursor,
+      }))
+    );
+  }
+
+  async getLists(): Promise<{ lists: HoarderList[] }> {
+    return this.makeRequest<{ lists: HoarderList[] }>("/lists", "GET");
+  }
+
+  async getListBookmarks(
+    listId: string,
+    params?: { limit?: number; cursor?: string }
+  ): Promise<PaginatedBookmarks> {
+    return this.makeRequest<PaginatedBookmarks>(`/lists/${listId}/bookmarks`, "GET", undefined, {
+      ...params,
+      includeContent: false,
+    });
+  }
+
+  async getAllListBookmarkIds(listId: string): Promise<string[]> {
+    return this.collectPaginated((cursor) =>
+      this.getListBookmarks(listId, { limit: 100, cursor }).then((data) => ({
+        items: (data.bookmarks || []).map((b) => b.id),
+        nextCursor: data.nextCursor,
+      }))
+    );
+  }
+
+  private async collectPaginated<T>(
+    fetchPage: (cursor?: string) => Promise<{ items: T[]; nextCursor: string | null }>
+  ): Promise<T[]> {
+    const all: T[] = [];
     let cursor: string | undefined;
 
     do {
-      const data = await this.getHighlights({
-        limit: 100,
-        cursor: cursor || undefined,
-      });
-
-      allHighlights.push(...(data.highlights || []));
-      cursor = data.nextCursor || undefined;
+      const { items, nextCursor } = await fetchPage(cursor);
+      all.push(...items);
+      cursor = nextCursor || undefined;
     } while (cursor);
 
-    return allHighlights;
+    return all;
   }
 
   async downloadAsset(

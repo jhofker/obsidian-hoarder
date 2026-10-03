@@ -1,4 +1,4 @@
-import { escapeMarkdownPath, escapeYaml, sanitizeHtml } from "./formatting-utils";
+import { escapeMarkdownPath, escapeYaml, escapeYamlListItem, sanitizeHtml } from "./formatting-utils";
 
 describe("escapeYaml", () => {
   describe("null and empty handling", () => {
@@ -194,6 +194,34 @@ describe("escapeYaml", () => {
       const desc = "Learn React, Vue & Angular in 2024!";
       expect(escapeYaml(desc)).toMatch(/^\|/);
     });
+  });
+});
+
+describe("escapeYamlListItem", () => {
+  it("always double-quotes, even for plain strings", () => {
+    expect(escapeYamlListItem("Reading")).toBe('"Reading"');
+  });
+
+  it("escapes embedded double quotes", () => {
+    expect(escapeYamlListItem('Say "Hi"')).toBe('"Say \\"Hi\\""');
+  });
+
+  it("escapes backslashes before quotes are escaped", () => {
+    expect(escapeYamlListItem("C:\\Users")).toBe('"C:\\\\Users"');
+  });
+
+  it("escapes newlines so the scalar stays single-line", () => {
+    expect(escapeYamlListItem("Line1\nLine2")).toBe('"Line1\\nLine2"');
+    expect(escapeYamlListItem("CRLF\r\nhere")).toBe('"CRLF\\nhere"');
+  });
+
+  it("escapes tabs", () => {
+    expect(escapeYamlListItem("A\tB")).toBe('"A\\tB"');
+  });
+
+  it("does not contain a raw newline or tab character in its output", () => {
+    const result = escapeYamlListItem("weird\nname\twith\rcontrol\nchars");
+    expect(result).not.toMatch(/[\n\t\r]/);
   });
 });
 
