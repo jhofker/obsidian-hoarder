@@ -5,6 +5,7 @@ import {
   ButtonComponent,
   Notice,
   PluginSettingTab,
+  SecretComponent,
   Setting,
   TFolder,
 } from "obsidian";
@@ -14,7 +15,10 @@ import { createTemplateEditor, setEditorValue } from "./template-editor";
 import { DEFAULT_TEMPLATE, validateTemplate } from "./template-renderer";
 
 export interface HoarderSettings {
+  /** @deprecated Legacy plaintext key; migrated into SecretStorage on load. */
   apiKey: string;
+  /** Name of the secret in Obsidian's SecretStorage that holds the API key. */
+  apiKeySecretName: string;
   apiEndpoint: string;
   syncFolder: string;
   attachmentsFolder: string;
@@ -49,6 +53,7 @@ export interface HoarderSettings {
 
 export const DEFAULT_SETTINGS: HoarderSettings = {
   apiKey: "",
+  apiKeySecretName: "",
   apiEndpoint: "https://api.hoarder.app/api/v1",
   syncFolder: "Hoarder",
   attachmentsFolder: "Hoarder/attachments",
@@ -158,16 +163,16 @@ export class HoarderSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Api key")
-      .setDesc("Your Hoarder API key")
-      .addText((text) =>
-        text
-          .setPlaceholder("Enter your API key")
-          .setValue(this.plugin.settings.apiKey)
+      .setDesc(
+        "Select a secret holding your Hoarder API key. Create it first under Settings → Keychain."
+      )
+      .addComponent((el) =>
+        new SecretComponent(this.app, el)
+          .setValue(this.plugin.settings.apiKeySecretName)
           .onChange(async (value) => {
-            this.plugin.settings.apiKey = value;
+            this.plugin.settings.apiKeySecretName = value ?? "";
             await this.plugin.saveSettings();
           })
-          .inputEl.addClass("hoarder-wide-input")
       );
 
     new Setting(containerEl)

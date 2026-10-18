@@ -2,7 +2,7 @@
     "id": "hoarder-sync",
     "name": "Karakeep Sync",
     "version": "2.1.1",
-    "minAppVersion": "1.7.0",
+    "minAppVersion": "1.11.4",
     "description": "Sync your Karakeep (Hoarder) bookmarks.",
     "author": "Jordan Hofker",
     "isDesktopOnly": false
