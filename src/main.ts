@@ -93,6 +93,38 @@ export default class HoarderPlugin extends Plugin {
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    await this.migrateApiKeyToSecretStorage();
+  }
+
+  /** Move a legacy plaintext API key from data.json into Obsidian's SecretStorage. */
+  private async migrateApiKeyToSecretStorage() {
+    const { apiKey, apiKeySecretName } = this.settings;
+    if (!apiKey || apiKeySecretName) return;
+
+    try {
+      const storage = this.app.secretStorage;
+      // Don't clobber an unrelated secret that already uses our preferred id
+      let id = "karakeep-api-key";
+      for (let n = 2; storage.getSecret(id) !== null && storage.getSecret(id) !== apiKey; n++) {
+        id = `karakeep-api-key-${n}`;
+      }
+      storage.setSecret(id, apiKey);
+      this.settings.apiKeySecretName = id;
+      this.settings.apiKey = "";
+      await this.saveData(this.settings);
+    } catch (error) {
+      // Leave the plaintext key in place so syncing keeps working
+      console.warn("[Hoarder] Could not migrate API key to SecretStorage:", error);
+    }
+  }
+
+  /** Resolve the API key: SecretStorage first, then any not-yet-migrated legacy key. */
+  getApiKey(): string {
+    const { apiKeySecretName, apiKey } = this.settings;
+    if (apiKeySecretName) {
+      return this.app.secretStorage.getSecret(apiKeySecretName) ?? "";
+    }
+    return apiKey;
   }
 
   async saveSettings() {
@@ -353,7 +385,7 @@ export default class HoarderPlugin extends Plugin {
       return { success: false, message: "Sync already in progress" };
     }
 
-    if (!this.settings.apiKey) {
+    if (!this.getApiKey()) {
       return { success: false, message: "Hoarder API key not configured" };
     }
 
@@ -687,12 +719,13 @@ export default class HoarderPlugin extends Plugin {
   }
 
   private initializeClient() {
-    if (!this.settings.apiKey || !this.settings.apiEndpoint) {
+    const apiKey = this.getApiKey();
+    if (!apiKey || !this.settings.apiEndpoint) {
       this.client = null;
     } else {
       this.client = new HoarderApiClient(
         this.settings.apiEndpoint,
-        this.settings.apiKey,
+        apiKey,
         this.settings.useObsidianRequest
       );
     }

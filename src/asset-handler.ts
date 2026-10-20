@@ -150,12 +150,9 @@ async function downloadAssetFile(
       buffer = result.buffer;
       contentType = result.contentType;
     } else {
-      const headers: Record<string, string> = {};
-      if (url.startsWith(apiDomain)) {
-        headers["Authorization"] = `Bearer ${settings.apiKey}`;
-      }
-
-      const response = await requestUrl({ url, headers });
+      // External URLs never receive credentials; same-origin downloads go through the
+      // authenticated client above.
+      const response = await requestUrl({ url });
       if (response.status >= 400) throw new Error(`HTTP error! status: ${response.status}`);
 
       buffer = response.arrayBuffer;
