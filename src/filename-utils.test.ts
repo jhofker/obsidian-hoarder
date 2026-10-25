@@ -1,4 +1,4 @@
-import { sanitizeFileName } from "./filename-utils";
+import { resolveBookmarkFilePath, sanitizeFileName } from "./filename-utils";
 
 describe("sanitizeFileName", () => {
   const testDate = "2024-01-15T10:30:00.000Z";
@@ -228,5 +228,44 @@ describe("sanitizeFileName", () => {
       expect(sanitizeFileName(title, date1)).toBe("2024-01-15-Same-Title");
       expect(sanitizeFileName(title, date2)).toBe("2024-12-31-Same-Title");
     });
+  });
+});
+
+describe("resolveBookmarkFilePath", () => {
+  const folder = "Bookmarks";
+  const base = "2024-01-15-Instagram";
+
+  it("uses the title-based name when it is free", () => {
+    expect(resolveBookmarkFilePath(folder, base, "abc123xyz789", new Map())).toBe(
+      "Bookmarks/2024-01-15-Instagram.md"
+    );
+  });
+
+  it("reuses the note that already holds this bookmark", () => {
+    const local = new Map([["abc123xyz789", "Bookmarks/2024-01-10-Old-Title.md"]]);
+    expect(resolveBookmarkFilePath(folder, base, "abc123xyz789", local)).toBe(
+      "Bookmarks/2024-01-10-Old-Title.md"
+    );
+  });
+
+  it("adds the end of the id when another bookmark owns the name", () => {
+    const local = new Map([["first-bookmark", "Bookmarks/2024-01-15-Instagram.md"]]);
+    expect(resolveBookmarkFilePath(folder, base, "abc123xyz789", local)).toBe(
+      "Bookmarks/2024-01-15-Instagram-xyz789.md"
+    );
+  });
+
+  it("gives each same-titled bookmark its own note within one sync", () => {
+    const local = new Map<string, string>();
+    const paths = ["id-aaaaaa", "id-bbbbbb", "id-cccccc"].map((id) => {
+      const path = resolveBookmarkFilePath(folder, base, id, local);
+      local.set(id, path);
+      return path;
+    });
+    expect(paths).toEqual([
+      "Bookmarks/2024-01-15-Instagram.md",
+      "Bookmarks/2024-01-15-Instagram-bbbbbb.md",
+      "Bookmarks/2024-01-15-Instagram-cccccc.md",
+    ]);
   });
 });

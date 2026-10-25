@@ -7,7 +7,7 @@ import {
   countDeletionResults,
   determineDeletionActions,
 } from "./deletion-handler";
-import { sanitizeFileName } from "./filename-utils";
+import { resolveBookmarkFilePath, sanitizeFileName } from "./filename-utils";
 import { shouldIncludeBookmark } from "./filter-utils";
 import {
   HoarderApiClient,
@@ -496,7 +496,12 @@ export default class HoarderPlugin extends Plugin {
           }
 
           const title = getBookmarkTitle(bookmark);
-          const fileName = `${folderPath}/${sanitizeFileName(title, bookmark.createdAt)}.md`;
+          const fileName = resolveBookmarkFilePath(
+            folderPath,
+            sanitizeFileName(title, bookmark.createdAt),
+            bookmark.id,
+            localBookmarkFiles
+          );
 
           // Get highlights and lists for this bookmark from pre-fetched maps
           const highlights = highlightsByBookmarkId.get(bookmark.id) || [];
@@ -560,6 +565,8 @@ export default class HoarderPlugin extends Plugin {
           } else {
             const content = await this.formatBookmarkAsMarkdown(bookmark, title, highlights, lists);
             await this.app.vault.create(fileName, content);
+            // Claim the name, so a later bookmark with the same title in this sync gets a suffix.
+            localBookmarkFiles.set(bookmark.id, fileName);
             totalBookmarks++;
           }
         }

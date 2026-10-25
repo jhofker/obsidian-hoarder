@@ -39,3 +39,36 @@ export function sanitizeFileName(title: string, createdAt: string | Date): strin
 
   return `${dateStr}-${sanitizedTitle}`;
 }
+
+/**
+ * Picks the note path for a bookmark.
+ *
+ * Reuses the note that already holds this bookmark's id, so a renamed bookmark keeps its note.
+ * Otherwise uses the title-based name, suffixed with the end of the bookmark id when another
+ * bookmark already owns that name (e.g. several bookmarks titled "Instagram" on the same day).
+ *
+ * @param folderPath - The sync folder
+ * @param baseName - The name from sanitizeFileName, without extension
+ * @param bookmarkId - The bookmark's id
+ * @param localBookmarkFiles - Map of bookmark id to note path, for notes already in the vault
+ * @returns The vault path of the note, with .md extension
+ */
+export function resolveBookmarkFilePath(
+  folderPath: string,
+  baseName: string,
+  bookmarkId: string,
+  localBookmarkFiles: Map<string, string>
+): string {
+  const existing = localBookmarkFiles.get(bookmarkId);
+  if (existing) {
+    return existing;
+  }
+
+  const path = `${folderPath}/${baseName}.md`;
+  const takenPaths = new Set(localBookmarkFiles.values());
+  if (!takenPaths.has(path)) {
+    return path;
+  }
+
+  return `${folderPath}/${baseName}-${bookmarkId.slice(-6)}.md`;
+}
