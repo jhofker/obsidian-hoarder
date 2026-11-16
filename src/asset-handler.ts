@@ -85,7 +85,7 @@ function getAssetUrl(
   if (client) {
     return client.getAssetUrl(assetId);
   }
-  const baseUrl = settings.apiEndpoint.replace(/\/v1\/?$/, "");
+  const baseUrl = settings.apiEndpoint.replace(/\/$/, "");
   return `${baseUrl}/assets/${assetId}`;
 }
 
