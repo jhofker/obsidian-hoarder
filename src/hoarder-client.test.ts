@@ -11,24 +11,24 @@ describe("HoarderApiClient", () => {
   describe("constructor", () => {
     it("should remove trailing slash from baseUrl", () => {
       const client = new HoarderApiClient("https://example.com/api/v1/", "key");
-      expect(client.getAssetUrl("abc")).toBe("https://example.com/assets/abc");
+      expect(client.getAssetUrl("abc")).toBe("https://example.com/api/v1/assets/abc");
     });
 
     it("should not modify baseUrl without trailing slash", () => {
       const client = new HoarderApiClient("https://example.com/api/v1", "key");
-      expect(client.getAssetUrl("abc")).toBe("https://example.com/assets/abc");
+      expect(client.getAssetUrl("abc")).toBe("https://example.com/api/v1/assets/abc");
     });
   });
 
   describe("getAssetUrl", () => {
-    it("should strip /api/v1 from base URL", () => {
+    it("should keep /api/v1 so the URL hits the REST asset route (#67)", () => {
       const client = new HoarderApiClient("https://example.com/api/v1", "key");
-      expect(client.getAssetUrl("abc123")).toBe("https://example.com/assets/abc123");
+      expect(client.getAssetUrl("abc123")).toBe("https://example.com/api/v1/assets/abc123");
     });
 
     it("should handle /api/v1/ with trailing slash (stripped by constructor)", () => {
       const client = new HoarderApiClient("https://example.com/api/v1/", "key");
-      expect(client.getAssetUrl("abc123")).toBe("https://example.com/assets/abc123");
+      expect(client.getAssetUrl("abc123")).toBe("https://example.com/api/v1/assets/abc123");
     });
 
     it("should work with base URL that has no /api/v1 path", () => {
@@ -39,13 +39,13 @@ describe("HoarderApiClient", () => {
     it("should include the asset ID in the returned URL", () => {
       const client = new HoarderApiClient("https://app.example.com/api/v1", "mykey");
       expect(client.getAssetUrl("test-asset-id")).toBe(
-        "https://app.example.com/assets/test-asset-id"
+        "https://app.example.com/api/v1/assets/test-asset-id"
       );
     });
 
     it("should work with subdomain-based deployments", () => {
       const client = new HoarderApiClient("https://hoarder.myhost.io/api/v1", "key");
-      expect(client.getAssetUrl("img42")).toBe("https://hoarder.myhost.io/assets/img42");
+      expect(client.getAssetUrl("img42")).toBe("https://hoarder.myhost.io/api/v1/assets/img42");
     });
   });
 

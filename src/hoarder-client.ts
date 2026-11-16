@@ -231,7 +231,6 @@ export class HoarderApiClient {
   }
 
   getAssetUrl(assetId: string): string {
-    const baseUrl = this.baseUrl.replace(/\/api\/v1\/?$/, "");
-    return `${baseUrl}/assets/${assetId}`;
+    return `${this.baseUrl}/assets/${assetId}`;
   }
 }

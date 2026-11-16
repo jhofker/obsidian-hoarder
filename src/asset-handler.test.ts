@@ -4,7 +4,7 @@ import {
   resolveAssetExtension,
   sanitizeAssetFileName,
 } from "./asset-handler";
-import { HoarderBookmark } from "./hoarder-client";
+import { HoarderApiClient, HoarderBookmark } from "./hoarder-client";
 import { DEFAULT_SETTINGS, HoarderSettings } from "./settings";
 
 // Helper to build a minimal mock App with vault adapter
@@ -679,5 +679,26 @@ describe("processBookmarkAssets", () => {
 
       expect(writtenFiles.length).toBe(0);
     });
+  });
+});
+
+describe("linked asset URLs when downloads are disabled (#67)", () => {
+  const endpoint = "https://karakeep.example.com/api/v1";
+  const settings = createSettings({ apiEndpoint: endpoint, downloadAssets: false });
+  const bookmark = createBookmark({
+    content: { type: "asset", assetType: "image", assetId: "asset-1" },
+  });
+
+  it("uses the /api/v1/assets route via the API client", async () => {
+    const { app } = createMockApp();
+    const client = new HoarderApiClient(endpoint, "key");
+    const { content } = await processBookmarkAssets(app, bookmark, "T", client, settings);
+    expect(content).toContain(`(${endpoint}/assets/asset-1)`);
+  });
+
+  it("uses the /api/v1/assets route without a client", async () => {
+    const { app } = createMockApp();
+    const { content } = await processBookmarkAssets(app, bookmark, "T", null, settings);
+    expect(content).toContain(`(${endpoint}/assets/asset-1)`);
   });
 });
